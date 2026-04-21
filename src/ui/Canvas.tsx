@@ -6,15 +6,17 @@ import { useStore } from '../state/store'
 export function Canvas() {
   const params = useStore((s) => s.params)
   const allPalettes = useStore((s) => [...s.presetPalettes, ...s.customPalettes])
+  const bundledFonts = useStore((s) => s.bundledFonts)
+  const uploadedFont = useStore((s) => s.uploadedFont?.opentypeFont ?? undefined)
 
   const poster = useMemo<Poster | null>(() => {
     try {
-      return generatePoster(params, allPalettes)
+      return generatePoster(params, allPalettes, { bundledFonts, uploadedFont })
     } catch (e) {
       console.error(e)
       return null
     }
-  }, [params, allPalettes])
+  }, [params, allPalettes, bundledFonts, uploadedFont])
 
   if (!poster) {
     return (

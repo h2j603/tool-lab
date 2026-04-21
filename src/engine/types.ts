@@ -19,6 +19,20 @@ export type ProportionSet = 'classical' | 'extreme' | 'balanced'
 export type TypePlacement = 'boundary-cross' | 'single-layer' | 'scattered'
 export type CanvasSize = 'A3' | 'A2' | 'B1' | 'custom'
 export type BlockShape = 'rectangle' | 'circle'
+export type MacroMode = 'vertical-stack' | 'letter-form'
+export type BundledFontId = 'inter' | 'noto-sans-kr'
+export type LetterFormFontSource =
+  | { kind: 'bundled'; id: BundledFontId }
+  | { kind: 'uploaded'; fileName: string }
+
+export type AllocationStrategy = 'area' | 'even'
+
+export interface LetterFormParams {
+  text: string
+  fontSource: LetterFormFontSource
+  blockCenterTolerance: number
+  regionBlockAllocation: AllocationStrategy
+}
 
 export interface ExperimentalFlags {
   enabled: boolean
@@ -80,6 +94,10 @@ export interface PosterParams {
 
   // Pattern
   moire: MoireParams
+
+  // Macro mode
+  macroMode: MacroMode
+  letterForm: LetterFormParams
 
   // Meta
   seed: number

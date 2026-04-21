@@ -34,6 +34,14 @@ export const DEFAULT_PARAMS: PosterParams = {
     interferenceColor: 'auto',
   },
 
+  macroMode: 'vertical-stack',
+  letterForm: {
+    text: 'A',
+    fontSource: { kind: 'bundled', id: 'inter' },
+    blockCenterTolerance: 0,
+    regionBlockAllocation: 'area',
+  },
+
   seed: 42,
   experimental: { enabled: false },
 }

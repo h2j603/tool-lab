@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import type opentype from 'opentype.js'
-import { ColorRole, Palette, PaletteColor, PosterParams } from '../engine/types'
+import opentype from 'opentype.js'
+import { BundledFontId, ColorRole, Palette, PaletteColor, PosterParams } from '../engine/types'
 import { PRESET_PALETTES } from '../palettes/presets'
 import { DEFAULT_PARAMS } from './defaults'
 
@@ -56,12 +56,17 @@ export interface UploadedFont {
   opentypeFont: opentype.Font
 }
 
+export type BundledFontStatus = 'idle' | 'loading' | 'ready' | 'error'
+
 export interface Store {
   params: PosterParams
   presetPalettes: Palette[]
   customPalettes: Palette[]
   seedLocked: boolean
   uploadedFont: UploadedFont | null
+  bundledFonts: Partial<Record<BundledFontId, opentype.Font>>
+  bundledFontStatus: BundledFontStatus
+  bundledFontError: string | null
 
   updateParams: (patch: Partial<PosterParams>) => void
   regenerateSeed: () => void
@@ -75,9 +80,24 @@ export interface Store {
   deletePalette: (id: string) => void
 
   setUploadedFont: (font: UploadedFont | null) => void
+  loadBundledFonts: () => Promise<void>
 
   allPalettes: () => Palette[]
   getPalette: (id: string) => Palette | undefined
+}
+
+const BUNDLED_FONT_FILES: Record<BundledFontId, string> = {
+  'inter': 'Inter.ttf',
+  'noto-sans-kr': 'NotoSansKR.ttf',
+}
+
+async function fetchBundledFont(id: BundledFontId): Promise<opentype.Font> {
+  const base = (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/'
+  const url = `${base}fonts/${BUNDLED_FONT_FILES[id]}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Failed to fetch ${url}: HTTP ${res.status}`)
+  const buf = await res.arrayBuffer()
+  return opentype.parse(buf)
 }
 
 const initial = loadPersisted()
@@ -96,6 +116,9 @@ export const useStore = create<Store>((set, get) => ({
   customPalettes: initial?.customPalettes ?? [],
   seedLocked: initial?.seedLocked ?? false,
   uploadedFont: null,
+  bundledFonts: {},
+  bundledFontStatus: 'idle',
+  bundledFontError: null,
 
   updateParams: (patch) => {
     set((state) => {
@@ -219,6 +242,24 @@ export const useStore = create<Store>((set, get) => ({
         },
       }
     })
+  },
+
+  loadBundledFonts: async () => {
+    const state = get()
+    if (state.bundledFontStatus === 'loading' || state.bundledFontStatus === 'ready') return
+    set({ bundledFontStatus: 'loading', bundledFontError: null })
+    try {
+      const ids: BundledFontId[] = ['inter', 'noto-sans-kr']
+      const results = await Promise.all(
+        ids.map(async (id) => [id, await fetchBundledFont(id)] as const),
+      )
+      const bundledFonts: Partial<Record<BundledFontId, opentype.Font>> = {}
+      for (const [id, font] of results) bundledFonts[id] = font
+      set({ bundledFonts, bundledFontStatus: 'ready' })
+    } catch (e) {
+      const msg = (e as Error).message ?? 'Font load failed'
+      set({ bundledFontStatus: 'error', bundledFontError: msg })
+    }
   },
 
   allPalettes: () => [...get().presetPalettes, ...get().customPalettes],

@@ -1,3 +1,4 @@
+import type opentype from 'opentype.js'
 import { assignColorsByWeight } from './color'
 import {
   enforceVerticalChain,
@@ -5,6 +6,10 @@ import {
   pickProportions,
   placeLayers,
 } from './composition'
+import {
+  generateLetterFormPoster,
+  LetterFormContext,
+} from './letterFormGenerator'
 import { attachMoireParams } from './moire'
 import { createNoise2D, createRng } from './random'
 import {
@@ -14,6 +19,12 @@ import {
   PosterParams,
 } from './types'
 import { placeTypeBlocks } from './typography'
+
+export interface GenerateContext {
+  // Map of bundled font id -> parsed font. Populated after fonts load.
+  bundledFonts?: Partial<Record<string, opentype.Font>>
+  uploadedFont?: opentype.Font
+}
 
 export function resolveCanvasDimensions(params: PosterParams): {
   canvasWidth: number
@@ -31,12 +42,31 @@ export function resolveCanvasDimensions(params: PosterParams): {
   return { canvasWidth: width, canvasHeight: height, bleedMm: params.bleedMm }
 }
 
-export function generatePoster(params: PosterParams, palettes: Palette[]): Poster {
-  const rng = createRng(params.seed)
-  const noise = createNoise2D(params.seed)
-
+export function generatePoster(
+  params: PosterParams,
+  palettes: Palette[],
+  ctx: GenerateContext = {},
+): Poster {
   const palette = palettes.find((p) => p.id === params.paletteId)
   if (!palette) throw new Error(`Palette not found: ${params.paletteId}`)
+
+  if (params.macroMode === 'letter-form') {
+    const font = resolveLetterFormFont(params, ctx)
+    if (!font) {
+      // Caller hasn't provided the requested font yet — degrade gracefully by
+      // falling back to the vertical-stack pipeline until the font loads.
+      return generateVerticalStack(params, palette)
+    }
+    const lfCtx: LetterFormContext = { font }
+    return generateLetterFormPoster(params, palette, lfCtx)
+  }
+
+  return generateVerticalStack(params, palette)
+}
+
+function generateVerticalStack(params: PosterParams, palette: Palette): Poster {
+  const rng = createRng(params.seed)
+  const noise = createNoise2D(params.seed)
 
   const { canvasWidth, canvasHeight, bleedMm } = resolveCanvasDimensions(params)
 
@@ -68,4 +98,13 @@ export function generatePoster(params: PosterParams, palettes: Palette[]): Poste
     seed: params.seed,
     paramsSnapshot: params,
   }
+}
+
+function resolveLetterFormFont(
+  params: PosterParams,
+  ctx: GenerateContext,
+): opentype.Font | null {
+  const source = params.letterForm.fontSource
+  if (source.kind === 'uploaded') return ctx.uploadedFont ?? null
+  return ctx.bundledFonts?.[source.id] ?? null
 }

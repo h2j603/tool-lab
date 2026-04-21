@@ -12,7 +12,10 @@ export function ExportBar() {
   const [textToPath, setTextToPath] = useState(false)
 
   const download = () => {
-    const poster = generatePoster(params, allPalettes)
+    const poster = generatePoster(params, allPalettes, {
+      bundledFonts: useStore.getState().bundledFonts,
+      uploadedFont: uploadedFont?.opentypeFont,
+    })
     const canConvert = textToPath && !!uploadedFont
     const svg = posterToSvg(poster, {
       includeBleed,
