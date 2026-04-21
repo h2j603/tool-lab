@@ -5,6 +5,7 @@ import {
   pickProportions,
   placeLayers,
 } from './composition'
+import { attachMoireParams } from './moire'
 import { createNoise2D, createRng } from './random'
 import {
   CANVAS_DIMENSIONS,
@@ -50,6 +51,7 @@ export function generatePoster(params: PosterParams, palettes: Palette[]): Poste
   let layers = placeLayers(sizes, proportions, params, rng, noise, canvasWidth, canvasHeight)
   layers = enforceVerticalChain(layers, params.overlapDepth, params.breathingRoom, rng)
   layers = assignColorsByWeight(layers, palette)
+  layers = attachMoireParams(layers, params.moire, rng, noise, palette)
 
   const typeBlocks = placeTypeBlocks(layers, params, rng)
 

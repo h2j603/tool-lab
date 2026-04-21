@@ -24,6 +24,23 @@ export interface ExperimentalFlags {
   enabled: boolean
 }
 
+export interface MoireParams {
+  enabled: boolean
+  baseAngleDelta: number    // degrees, 0.5..10
+  baseSpacing: number       // mm, 0.5..5
+  baseDotRadius: number     // fraction of spacing, 0.15..0.45
+  variation: number         // 0..1, per-block deviation from base
+  interferenceColor: 'auto' | string  // 'auto' = darken the block color
+}
+
+export interface LayerMoire {
+  angleDelta: number
+  spacing: number
+  dotRadius: number         // fraction of spacing
+  primaryColor: string
+  interferenceColor: string
+}
+
 export type FontSource =
   | 'system'
   | { type: 'upload'; data: ArrayBuffer; name: string }
@@ -61,6 +78,9 @@ export interface PosterParams {
   customCanvasHeight?: number
   bleedMm: number
 
+  // Pattern
+  moire: MoireParams
+
   // Meta
   seed: number
   experimental: ExperimentalFlags
@@ -77,6 +97,7 @@ export interface Layer {
   skew: number
   colorHex: string
   area: number
+  moire?: LayerMoire
 }
 
 export interface TypeBlock {

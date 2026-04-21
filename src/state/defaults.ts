@@ -25,6 +25,15 @@ export const DEFAULT_PARAMS: PosterParams = {
   canvasSize: 'A3',
   bleedMm: 3,
 
+  moire: {
+    enabled: false,
+    baseAngleDelta: 2,
+    baseSpacing: 2,
+    baseDotRadius: 0.35,
+    variation: 0.4,
+    interferenceColor: 'auto',
+  },
+
   seed: 42,
   experimental: { enabled: false },
 }

@@ -20,6 +20,7 @@ interface Args {
   palette?: string
   out?: string
   shape?: BlockShape
+  moire?: boolean
 }
 
 function parseArgs(argv: string[]): Args {
@@ -31,6 +32,7 @@ function parseArgs(argv: string[]): Args {
     else if (key === 'palette') out.palette = value
     else if (key === 'out') out.out = value
     else if (key === 'shape') out.shape = value as BlockShape
+    else if (key === 'moire') out.moire = value !== 'false'
   }
   return out
 }
@@ -47,6 +49,9 @@ function main() {
       seed,
       paletteId: args.palette ?? DEFAULT_PARAMS.paletteId,
       blockShape: args.shape ?? DEFAULT_PARAMS.blockShape,
+      moire: args.moire
+        ? { ...DEFAULT_PARAMS.moire, enabled: true }
+        : DEFAULT_PARAMS.moire,
     }
     const poster = generatePoster(params, PRESET_PALETTES)
     const svg = posterToSvg(poster, { includeBleed: true, convertTextToPath: false })
