@@ -45,12 +45,12 @@ export function Section({ id, title, children, defaultOpen = true }: SectionProp
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-1 py-2 px-1 text-left text-xs font-semibold uppercase tracking-wider text-neutral-700 hover:text-black"
+        className="w-full flex items-center gap-1 py-3 px-1 text-left text-xs font-semibold uppercase tracking-wider text-neutral-700 hover:text-black"
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span>{title}</span>
       </button>
-      {open && <div className="pb-4 pt-1 px-1 space-y-3">{children}</div>}
+      {open && <div className="pb-4 pt-1 px-1 space-y-4">{children}</div>}
     </section>
   )
 }

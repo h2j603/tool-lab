@@ -29,7 +29,7 @@ export function Canvas() {
   const totalH = poster.canvasHeight + bleed * 2
 
   return (
-    <div className="w-full h-full flex items-center justify-center p-8">
+    <div className="w-full h-full flex items-center justify-center p-4 sm:p-6 lg:p-8">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox={`0 0 ${totalW} ${totalH}`}

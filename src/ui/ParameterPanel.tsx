@@ -8,7 +8,7 @@ import { TypographySection } from './sections/TypographySection'
 
 export function ParameterPanel() {
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="px-1">
       <CompositionSection />
       <ProportionSection />
       <RotationSection />
