@@ -3,11 +3,13 @@
 // Usage:
 //   npm run generate -- --seed=42
 //   npm run generate -- --seed=1 --batch=20 --palette=risograph
+//   npm run generate -- --seed=1 --batch=30 --shape=circle
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import { generatePoster } from '../src/engine/generator'
+import { BlockShape } from '../src/engine/types'
 import { posterToSvg } from '../src/export/svg'
 import { PRESET_PALETTES } from '../src/palettes/presets'
 import { DEFAULT_PARAMS } from '../src/state/defaults'
@@ -17,6 +19,7 @@ interface Args {
   batch: number
   palette?: string
   out?: string
+  shape?: BlockShape
 }
 
 function parseArgs(argv: string[]): Args {
@@ -27,6 +30,7 @@ function parseArgs(argv: string[]): Args {
     else if (key === 'batch') out.batch = Number(value)
     else if (key === 'palette') out.palette = value
     else if (key === 'out') out.out = value
+    else if (key === 'shape') out.shape = value as BlockShape
   }
   return out
 }
@@ -42,14 +46,15 @@ function main() {
       ...DEFAULT_PARAMS,
       seed,
       paletteId: args.palette ?? DEFAULT_PARAMS.paletteId,
+      blockShape: args.shape ?? DEFAULT_PARAMS.blockShape,
     }
     const poster = generatePoster(params, PRESET_PALETTES)
     const svg = posterToSvg(poster, { includeBleed: true, convertTextToPath: false })
     const file = args.out && args.batch === 1
       ? resolve(args.out)
-      : resolve(outDir, `poster-${String(seed).padStart(4, '0')}.svg`)
+      : resolve(outDir, `poster-${params.blockShape[0]}-${String(seed).padStart(4, '0')}.svg`)
     writeFileSync(file, svg, 'utf8')
-    console.log(`wrote ${file}  layers=${poster.layers.length} text=${poster.typeBlocks.length}`)
+    console.log(`wrote ${file}  shape=${params.blockShape} layers=${poster.layers.length}`)
   }
 }
 

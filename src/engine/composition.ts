@@ -11,8 +11,6 @@ const FIBONACCI_WEIGHTS = [1, 2, 3, 5, 8, 13, 21]
 
 const MIN_SIDE_RATIO = 0.25
 
-// Rule B — weighted sizes in [0, 1].
-// Experimental mode allows near-equal sizes with a small jitter.
 export function generateWeightedSizes(
   count: number,
   rng: RNG,
@@ -35,7 +33,6 @@ export function generateWeightedSizes(
   return shuffle(sized, rng)
 }
 
-// Rule C — aspect ratios pulled from a restricted set.
 export function pickProportions(
   count: number,
   set: ProportionSet,
@@ -54,7 +51,6 @@ export function pickProportions(
   return result
 }
 
-// Rule A — sine-biased x-jitter. Sine enforces alternation; noise adds organic variation.
 export function computeAxisJitter(
   i: number,
   coherence: number,
@@ -68,7 +64,6 @@ export function computeAxisJitter(
   return blended * (1 - coherence) * maxJitterMm
 }
 
-// Enforce minimum side length so no layer becomes a sliver.
 export function enforceMinSideLength(
   layers: Layer[],
   baseSize: number,
@@ -92,22 +87,18 @@ export function enforceMinSideLength(
   })
 }
 
-// Rules A + E — lay out layers along the vertical axis with sine-based jitter.
-export function placeLayers(
+function placeRectangleLayers(
   sizes: number[],
   proportions: number[],
   params: PosterParams,
-  _rng: RNG,
   noise: NoiseFn,
   canvasWidth: number,
   canvasHeight: number,
 ): Layer[] {
   const count = sizes.length
-  if (count === 0) return []
-
   const baseMax = params.baseSize * canvasHeight
 
-  const tentative: { w: number; h: number; ratio: number }[] = []
+  const tentative: { w: number; h: number }[] = []
   let totalHeight = 0
   for (let i = 0; i < count; i++) {
     const weight = sizes[i]
@@ -123,7 +114,7 @@ export function placeLayers(
     }
     w = Math.min(w, canvasWidth * 0.95)
     h = Math.min(h, canvasHeight * 0.6)
-    tentative.push({ w, h, ratio })
+    tentative.push({ w, h })
     totalHeight += h
   }
 
@@ -140,7 +131,6 @@ export function placeLayers(
   const gap = rawGap - Math.min(tentative[0].h * 0.15, 20)
 
   let cursorY = (canvasHeight - (finalStackHeight + gap * gapCount)) / 2
-
   const maxJitterMm = canvasWidth * 0.15
   const layers: Layer[] = []
 
@@ -152,6 +142,7 @@ export function placeLayers(
 
     layers.push({
       id: `layer-${i}`,
+      shape: 'rectangle',
       x: (canvasWidth - w) / 2 + xJitter,
       y: cursorY,
       width: w,
@@ -164,7 +155,81 @@ export function placeLayers(
     cursorY += h + gap
   }
 
-  const minSized = enforceMinSideLength(layers, params.baseSize, canvasHeight)
+  return layers
+}
+
+function placeCircleLayers(
+  sizes: number[],
+  params: PosterParams,
+  noise: NoiseFn,
+  canvasWidth: number,
+  canvasHeight: number,
+): Layer[] {
+  const count = sizes.length
+  const baseMax = params.baseSize * canvasHeight
+
+  // Diameter from Fibonacci weight; cap to fit within canvas.
+  const diameters = sizes.map((w) =>
+    Math.min(baseMax * w, canvasWidth * 0.95, canvasHeight * 0.6),
+  )
+
+  const totalHeight = diameters.reduce((a, d) => a + d, 0)
+  const targetStackHeight = canvasHeight * 0.85
+  const stackScale = totalHeight > targetStackHeight ? targetStackHeight / totalHeight : 1
+  const scaled = diameters.map((d) => d * stackScale)
+
+  const finalStackHeight = scaled.reduce((a, d) => a + d, 0)
+  const gapCount = Math.max(1, count - 1)
+  const rawGap = (canvasHeight - finalStackHeight) / (gapCount + 2)
+  const gap = rawGap - Math.min(scaled[0] * 0.15, 20)
+
+  let cursorY = (canvasHeight - (finalStackHeight + gap * gapCount)) / 2
+  const maxJitterMm = canvasWidth * 0.15
+  const layers: Layer[] = []
+
+  for (let i = 0; i < count; i++) {
+    const d = scaled[i]
+    const xJitter = computeAxisJitter(i, params.coherence, noise, maxJitterMm)
+
+    layers.push({
+      id: `layer-${i}`,
+      shape: 'circle',
+      x: (canvasWidth - d) / 2 + xJitter,
+      y: cursorY,
+      width: d,
+      height: d,
+      rotation: 0,
+      skew: 0,
+      colorHex: '#000000',
+      area: Math.PI * (d / 2) * (d / 2),
+    })
+    cursorY += d + gap
+  }
+
+  return layers
+}
+
+// Rules A + E — lay out layers along the vertical axis with sine-based jitter.
+export function placeLayers(
+  sizes: number[],
+  proportions: number[],
+  params: PosterParams,
+  _rng: RNG,
+  noise: NoiseFn,
+  canvasWidth: number,
+  canvasHeight: number,
+): Layer[] {
+  if (sizes.length === 0) return []
+
+  const layers =
+    params.blockShape === 'circle'
+      ? placeCircleLayers(sizes, params, noise, canvasWidth, canvasHeight)
+      : placeRectangleLayers(sizes, proportions, params, noise, canvasWidth, canvasHeight)
+
+  const minSized =
+    params.blockShape === 'circle'
+      ? layers
+      : enforceMinSideLength(layers, params.baseSize, canvasHeight)
   return clampToCanvas(minSized, canvasWidth, canvasHeight)
 }
 
@@ -176,7 +241,6 @@ function clampToCanvas(layers: Layer[], canvasWidth: number, canvasHeight: numbe
   })
 }
 
-// Axis-aligned bounding box of a rotated rectangle centered on (cx, cy).
 function rotatedAABB(layer: Layer): {
   top: number
   bottom: number
@@ -185,6 +249,10 @@ function rotatedAABB(layer: Layer): {
 } {
   const cx = layer.x + layer.width / 2
   const cy = layer.y + layer.height / 2
+  if (layer.shape === 'circle') {
+    const r = layer.width / 2
+    return { top: cy - r, bottom: cy + r, left: cx - r, right: cx + r }
+  }
   const theta = (layer.rotation * Math.PI) / 180
   const cos = Math.abs(Math.cos(theta))
   const sin = Math.abs(Math.sin(theta))
@@ -198,9 +266,9 @@ function rotatedAABB(layer: Layer): {
   }
 }
 
-// Rule D — hard vertical-chain overlap. Every adjacent pair (by y order)
-// must overlap by at least `min(prevHeight, currHeight) * overlapDepth`,
-// unless the pair is one of the allowed "breathing room" gaps.
+// Rule D — hard vertical-chain overlap, shape-aware.
+// Rectangles: axis-aligned gap on rotated bbox; pull down along Y.
+// Circles: center-to-center distance; pull along the connecting line.
 export function enforceVerticalChain(
   layers: Layer[],
   overlapDepth: number,
@@ -219,31 +287,75 @@ export function enforceVerticalChain(
   for (let i = 1; i < sorted.length; i++) {
     const prev = sorted[i - 1]
     const curr = sorted[i]
+    const allowGap = gapIndices.has(i - 1)
 
-    const prevBox = rotatedAABB(prev)
-    const currBox = rotatedAABB(curr)
-
-    const minDim = Math.min(prev.height, curr.height)
-    const pairIdx = i - 1
-
-    if (gapIndices.has(pairIdx)) {
-      // Allow a small intentional gap, but cap it at 0.5 * min height.
-      const maxGap = minDim * 0.5
-      const rawGap = currBox.top - prevBox.bottom
-      if (rawGap > maxGap) {
-        curr.y -= rawGap - maxGap
-      }
-      continue
-    }
-
-    const minOverlapMm = minDim * overlapDepth
-    const gap = currBox.top - prevBox.bottom
-    if (gap > -minOverlapMm) {
-      curr.y -= gap + minOverlapMm
+    if (prev.shape === 'circle' && curr.shape === 'circle') {
+      enforceCirclePair(prev, curr, overlapDepth, allowGap)
+    } else {
+      enforceRectPair(prev, curr, overlapDepth, allowGap)
     }
   }
 
   return sorted
+}
+
+function enforceRectPair(prev: Layer, curr: Layer, overlapDepth: number, allowGap: boolean): void {
+  const prevBox = rotatedAABB(prev)
+  const currBox = rotatedAABB(curr)
+  const minDim = Math.min(prev.height, curr.height)
+
+  if (allowGap) {
+    const maxGap = minDim * 0.5
+    const rawGap = currBox.top - prevBox.bottom
+    if (rawGap > maxGap) {
+      curr.y -= rawGap - maxGap
+    }
+    return
+  }
+
+  const minOverlapMm = minDim * overlapDepth
+  const gap = currBox.top - prevBox.bottom
+  if (gap > -minOverlapMm) {
+    curr.y -= gap + minOverlapMm
+  }
+}
+
+function enforceCirclePair(
+  prev: Layer,
+  curr: Layer,
+  overlapDepth: number,
+  allowGap: boolean,
+): void {
+  const prevCx = prev.x + prev.width / 2
+  const prevCy = prev.y + prev.height / 2
+  const currCx = curr.x + curr.width / 2
+  const currCy = curr.y + curr.height / 2
+
+  const dx = currCx - prevCx
+  const dy = currCy - prevCy
+  const dist = Math.hypot(dx, dy) || 1
+  const ux = dx / dist
+  const uy = dy / dist
+
+  const sumRadii = (prev.width + curr.width) / 2
+  const minDiameter = Math.min(prev.width, curr.width)
+
+  if (allowGap) {
+    const maxCenterDist = sumRadii + minDiameter * 0.5
+    if (dist > maxCenterDist) {
+      const pull = dist - maxCenterDist
+      curr.x -= ux * pull
+      curr.y -= uy * pull
+    }
+    return
+  }
+
+  const requiredDist = sumRadii - minDiameter * overlapDepth
+  if (dist > requiredDist) {
+    const pull = dist - requiredDist
+    curr.x -= ux * pull
+    curr.y -= uy * pull
+  }
 }
 
 function pickRandomIndices(total: number, count: number, rng: RNG): Set<number> {

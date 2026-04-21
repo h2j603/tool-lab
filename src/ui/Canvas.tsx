@@ -42,6 +42,13 @@ export function Canvas() {
           {poster.layers.map((l, i) => {
             const cx = l.x + l.width / 2
             const cy = l.y + l.height / 2
+            if (l.shape === 'circle') {
+              return (
+                <g key={l.id} id={`layer-${i}`}>
+                  <circle cx={cx} cy={cy} r={l.width / 2} fill={l.colorHex} />
+                </g>
+              )
+            }
             const transforms: string[] = []
             if (l.rotation !== 0) transforms.push(`rotate(${l.rotation.toFixed(3)} ${cx.toFixed(3)} ${cy.toFixed(3)})`)
             if (l.skew !== 0) transforms.push(`skewX(${l.skew.toFixed(3)})`)

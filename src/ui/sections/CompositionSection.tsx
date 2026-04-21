@@ -1,5 +1,7 @@
+import { BlockShape } from '../../engine/types'
 import { useStore } from '../../state/store'
 import { Section } from '../primitives/Section'
+import { Select } from '../primitives/Select'
 import { Slider } from '../primitives/Slider'
 
 export function CompositionSection() {
@@ -7,6 +9,15 @@ export function CompositionSection() {
   const update = useStore((s) => s.updateParams)
   return (
     <Section id="composition" title="Composition">
+      <Select<BlockShape>
+        label="Block shape"
+        value={params.blockShape}
+        options={[
+          { value: 'rectangle', label: 'Rectangle' },
+          { value: 'circle', label: 'Circle' },
+        ]}
+        onChange={(v) => update({ blockShape: v })}
+      />
       <Slider
         label="Layers"
         value={params.layerCount}

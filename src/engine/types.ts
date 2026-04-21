@@ -18,6 +18,7 @@ export interface Palette {
 export type ProportionSet = 'classical' | 'extreme' | 'balanced'
 export type TypePlacement = 'boundary-cross' | 'single-layer' | 'scattered'
 export type CanvasSize = 'A3' | 'A2' | 'B1' | 'custom'
+export type BlockShape = 'rectangle' | 'circle'
 
 export interface ExperimentalFlags {
   enabled: boolean
@@ -33,6 +34,7 @@ export interface PosterParams {
   coherence: number
   overlapDepth: number      // 0.10..0.40 — how deeply adjacent pairs overlap
   breathingRoom: number     // 0..1 — proportion of pairs allowed to have small gaps
+  blockShape: BlockShape    // global per-poster shape choice
 
   // Proportion
   proportionSet: ProportionSet
@@ -66,6 +68,7 @@ export interface PosterParams {
 
 export interface Layer {
   id: string
+  shape: BlockShape
   x: number
   y: number
   width: number

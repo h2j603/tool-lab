@@ -36,6 +36,14 @@ export function posterToSvg(poster: Poster, options: SvgExportOptions): string {
 function layerToSvg(layer: Layer, index: number): string {
   const cx = layer.x + layer.width / 2
   const cy = layer.y + layer.height / 2
+
+  if (layer.shape === 'circle') {
+    const r = layer.width / 2
+    return `<g id="layer-${index}">
+    <circle cx="${fmt(cx)}" cy="${fmt(cy)}" r="${fmt(r)}" fill="${layer.colorHex}" />
+  </g>`
+  }
+
   const transforms: string[] = []
   if (layer.rotation !== 0) transforms.push(`rotate(${fmt(layer.rotation)} ${fmt(cx)} ${fmt(cy)})`)
   if (layer.skew !== 0) transforms.push(`skewX(${fmt(layer.skew)})`)

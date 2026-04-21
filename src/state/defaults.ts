@@ -5,6 +5,7 @@ export const DEFAULT_PARAMS: PosterParams = {
   coherence: 0.65,
   overlapDepth: 0.2,
   breathingRoom: 0,
+  blockShape: 'rectangle',
 
   proportionSet: 'classical',
   baseSize: 0.6,

@@ -46,9 +46,9 @@ describe('pickProportions', () => {
 describe('assignColorsByWeight', () => {
   it('assigns dominant to largest and accent to smallest', () => {
     const layers: Layer[] = [
-      { id: 'a', x: 0, y: 0, width: 100, height: 100, rotation: 0, skew: 0, colorHex: '', area: 10000 },
-      { id: 'b', x: 0, y: 0, width: 50, height: 50, rotation: 0, skew: 0, colorHex: '', area: 2500 },
-      { id: 'c', x: 0, y: 0, width: 20, height: 20, rotation: 0, skew: 0, colorHex: '', area: 400 },
+      { id: 'a', x: 0, y: 0, width: 100, height: 100, shape: 'rectangle', rotation: 0, skew: 0, colorHex: '', area: 10000 },
+      { id: 'b', x: 0, y: 0, width: 50, height: 50, shape: 'rectangle', rotation: 0, skew: 0, colorHex: '', area: 2500 },
+      { id: 'c', x: 0, y: 0, width: 20, height: 20, shape: 'rectangle', rotation: 0, skew: 0, colorHex: '', area: 400 },
     ]
     const palette = PRESET_PALETTES[0]
     const result = assignColorsByWeight(layers, palette)
@@ -61,9 +61,9 @@ describe('assignColorsByWeight', () => {
 describe('enforceVerticalChain', () => {
   it('every adjacent pair overlaps after enforcement with breathingRoom=0', () => {
     const layers: Layer[] = [
-      { id: 'a', x: 0, y: 0,   width: 80, height: 50, rotation: 0, skew: 0, colorHex: '', area: 4000 },
-      { id: 'b', x: 0, y: 200, width: 80, height: 50, rotation: 0, skew: 0, colorHex: '', area: 4000 },
-      { id: 'c', x: 0, y: 400, width: 80, height: 50, rotation: 0, skew: 0, colorHex: '', area: 4000 },
+      { id: 'a', x: 0, y: 0,   width: 80, height: 50, shape: 'rectangle', rotation: 0, skew: 0, colorHex: '', area: 4000 },
+      { id: 'b', x: 0, y: 200, width: 80, height: 50, shape: 'rectangle', rotation: 0, skew: 0, colorHex: '', area: 4000 },
+      { id: 'c', x: 0, y: 400, width: 80, height: 50, shape: 'rectangle', rotation: 0, skew: 0, colorHex: '', area: 4000 },
     ]
     const out = enforceVerticalChain(layers, 0.2, 0, createRng(1))
     for (let i = 1; i < out.length; i++) {
@@ -75,8 +75,8 @@ describe('enforceVerticalChain', () => {
 
   it('deterministic for a given seed', () => {
     const layers: Layer[] = [
-      { id: 'a', x: 0, y: 0,   width: 80, height: 50, rotation: 0, skew: 0, colorHex: '', area: 4000 },
-      { id: 'b', x: 0, y: 200, width: 80, height: 50, rotation: 0, skew: 0, colorHex: '', area: 4000 },
+      { id: 'a', x: 0, y: 0,   width: 80, height: 50, shape: 'rectangle', rotation: 0, skew: 0, colorHex: '', area: 4000 },
+      { id: 'b', x: 0, y: 200, width: 80, height: 50, shape: 'rectangle', rotation: 0, skew: 0, colorHex: '', area: 4000 },
     ]
     const a = enforceVerticalChain(layers, 0.2, 0, createRng(5))
     const b = enforceVerticalChain(layers, 0.2, 0, createRng(5))
