@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Canvas } from './ui/Canvas'
+import { ErrorBoundary } from './ui/ErrorBoundary'
 import { ExportBar } from './ui/ExportBar'
 import { ParameterPanel } from './ui/ParameterPanel'
 import { SeedBar } from './ui/SeedBar'
@@ -27,7 +28,9 @@ export function App() {
       </header>
       <div className="flex-1 flex min-h-0">
         <main className="flex-1 min-w-0 bg-neutral-100">
-          <Canvas />
+          <ErrorBoundary>
+            <Canvas />
+          </ErrorBoundary>
         </main>
         <aside className="w-80 border-l border-neutral-200 bg-white flex flex-col">
           <div className="flex-1 min-h-0">

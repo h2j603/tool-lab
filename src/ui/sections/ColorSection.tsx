@@ -1,7 +1,6 @@
 import { useStore } from '../../state/store'
 import { PaletteEditor } from '../PaletteEditor'
 import { Section } from '../primitives/Section'
-import { Select } from '../primitives/Select'
 
 export function ColorSection() {
   const params = useStore((s) => s.params)
@@ -11,15 +10,20 @@ export function ColorSection() {
 
   return (
     <Section id="color" title="Color">
-      <Select
-        label="Palette"
-        value={params.paletteId}
-        options={palettes.map((p) => ({
-          value: p.id,
-          label: p.isCustom ? `${p.name} (custom)` : p.name,
-        }))}
-        onChange={(v) => update({ paletteId: v })}
-      />
+      <label className="block text-xs">
+        <div className="text-neutral-600 mb-1">Palette</div>
+        <select
+          value={params.paletteId}
+          onChange={(e) => update({ paletteId: e.target.value })}
+          className="w-full border border-neutral-300 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-black"
+        >
+          {palettes.map((p) => (
+            <option key={p.id} value={p.id} title={p.character}>
+              {p.isCustom ? `${p.name} (custom)` : p.name}
+            </option>
+          ))}
+        </select>
+      </label>
       {active && <div className="text-xs text-neutral-500 italic">{active.character}</div>}
       <PaletteEditor />
     </Section>
