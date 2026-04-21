@@ -11,7 +11,7 @@ export function CompositionSection() {
         label="Layers"
         value={params.layerCount}
         min={2}
-        max={7}
+        max={6}
         step={1}
         onChange={(v) => update({ layerCount: v })}
       />
@@ -25,13 +25,22 @@ export function CompositionSection() {
         onChange={(v) => update({ coherence: v })}
       />
       <Slider
-        label="Overlap density"
-        value={params.overlapDensity}
-        min={0.2}
-        max={0.6}
+        label="Overlap depth"
+        value={params.overlapDepth}
+        min={0.1}
+        max={0.4}
         step={0.01}
         format={(v) => v.toFixed(2)}
-        onChange={(v) => update({ overlapDensity: v })}
+        onChange={(v) => update({ overlapDepth: v })}
+      />
+      <Slider
+        label="Breathing room"
+        value={params.breathingRoom}
+        min={0}
+        max={1}
+        step={0.05}
+        format={(v) => v.toFixed(2)}
+        onChange={(v) => update({ breathingRoom: v })}
       />
     </Section>
   )

@@ -10,8 +10,8 @@ export function RotationSection() {
       <Slider
         label="Global tilt"
         value={params.globalTilt}
-        min={-15}
-        max={15}
+        min={-12}
+        max={12}
         step={0.5}
         format={(v) => `${v.toFixed(1)}°`}
         onChange={(v) => update({ globalTilt: v })}
@@ -20,7 +20,7 @@ export function RotationSection() {
         label="Local variation"
         value={params.localVariation}
         min={0}
-        max={8}
+        max={5}
         step={0.5}
         format={(v) => `${v.toFixed(1)}°`}
         onChange={(v) => update({ localVariation: v })}
@@ -29,7 +29,7 @@ export function RotationSection() {
         label="Skew"
         value={params.skew}
         min={0}
-        max={6}
+        max={4}
         step={0.5}
         format={(v) => `${v.toFixed(1)}°`}
         onChange={(v) => update({ skew: v })}

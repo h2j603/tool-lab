@@ -22,6 +22,12 @@ function loadPersisted(): Persisted | null {
     if (typeof parsed.params.fontSource === 'object') {
       parsed.params.fontSource = 'system'
     }
+    // Merge with defaults so schema changes don't leave params partially populated.
+    const migrated = { ...DEFAULT_PARAMS, ...parsed.params } as PosterParams & {
+      overlapDensity?: number
+    }
+    delete migrated.overlapDensity
+    parsed.params = migrated
     return parsed
   } catch {
     return null

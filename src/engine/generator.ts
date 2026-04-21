@@ -1,6 +1,6 @@
 import { assignColorsByWeight } from './color'
 import {
-  enforceOverlap,
+  enforceVerticalChain,
   generateWeightedSizes,
   pickProportions,
   placeLayers,
@@ -48,7 +48,7 @@ export function generatePoster(params: PosterParams, palettes: Palette[]): Poste
   )
 
   let layers = placeLayers(sizes, proportions, params, rng, noise, canvasWidth, canvasHeight)
-  layers = enforceOverlap(layers, params.overlapDensity)
+  layers = enforceVerticalChain(layers, params.overlapDepth, params.breathingRoom, rng)
   layers = assignColorsByWeight(layers, palette)
 
   const typeBlocks = placeTypeBlocks(layers, params, rng)

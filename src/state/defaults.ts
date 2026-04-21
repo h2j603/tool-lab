@@ -3,14 +3,15 @@ import { PosterParams } from '../engine/types'
 export const DEFAULT_PARAMS: PosterParams = {
   layerCount: 4,
   coherence: 0.65,
-  overlapDensity: 0.4,
+  overlapDepth: 0.2,
+  breathingRoom: 0,
 
   proportionSet: 'classical',
   baseSize: 0.6,
 
-  globalTilt: 3,
+  globalTilt: 4,
   localVariation: 2,
-  skew: 0,
+  skew: 1,
 
   paletteId: 'strelka',
 

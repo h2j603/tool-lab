@@ -31,7 +31,8 @@ export interface PosterParams {
   // Composition
   layerCount: number
   coherence: number
-  overlapDensity: number
+  overlapDepth: number      // 0.10..0.40 — how deeply adjacent pairs overlap
+  breathingRoom: number     // 0..1 — proportion of pairs allowed to have small gaps
 
   // Proportion
   proportionSet: ProportionSet

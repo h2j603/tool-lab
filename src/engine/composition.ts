@@ -2,12 +2,14 @@ import { NoiseFn, RNG, noise1D, shuffle } from './random'
 import { Layer, PosterParams, ProportionSet } from './types'
 
 export const PROPORTION_SETS: Record<ProportionSet, number[]> = {
-  classical: [1, Math.SQRT2, 1.618, 2, 3, 5],
-  extreme: [1, 2, 4, 7, 11],
+  classical: [1, Math.SQRT2, 1.618, 2, 3],
+  extreme: [1, 2, 3, 5, 7],
   balanced: [1, Math.SQRT2, 2],
 }
 
 const FIBONACCI_WEIGHTS = [1, 2, 3, 5, 8, 13, 21]
+
+const MIN_SIDE_RATIO = 0.25
 
 // Rule B — weighted sizes in [0, 1].
 // Experimental mode allows near-equal sizes with a small jitter.
@@ -19,18 +21,14 @@ export function generateWeightedSizes(
   if (count <= 0) return []
 
   if (experimentalEqualSizes) {
-    // Equal sizes with subtle variance (±10%).
     return Array.from({ length: count }, () => 0.8 + (rng() - 0.5) * 0.2)
   }
 
   const base = FIBONACCI_WEIGHTS.slice(0, count)
   const total = base.reduce((a, b) => a + b, 0)
-  // Normalize so the mean is near 1; scale so the largest maps to ~1.
   const max = base[base.length - 1]
   const normalized = base.map((w) => w / max)
-  // Make sure even the smallest weight isn't invisible.
   const floored = normalized.map((v) => Math.max(0.12, v))
-  // Re-normalize so the mean preserves rough total area.
   const sum = floored.reduce((a, b) => a + b, 0)
   const scale = total / max / sum
   const sized = floored.map((v) => Math.min(1, v * scale))
@@ -38,7 +36,6 @@ export function generateWeightedSizes(
 }
 
 // Rule C — aspect ratios pulled from a restricted set.
-// Experimental mode draws free ratios from [0.6, 2.5].
 export function pickProportions(
   count: number,
   set: ProportionSet,
@@ -52,13 +49,50 @@ export function pickProportions(
   const result: number[] = []
   for (let i = 0; i < count; i++) {
     const ratio = pool[Math.floor(rng() * pool.length)]
-    // Randomly invert to get vertical layers too, ~30% of the time.
     result.push(rng() < 0.3 ? 1 / ratio : ratio)
   }
   return result
 }
 
-// Rules A + E — lay out layers along the vertical axis with noise jitter.
+// Rule A — sine-biased x-jitter. Sine enforces alternation; noise adds organic variation.
+export function computeAxisJitter(
+  i: number,
+  coherence: number,
+  noise: NoiseFn,
+  maxJitterMm: number,
+): number {
+  const phase = Math.PI / 2
+  const sineValue = Math.sin(i * Math.PI + phase)
+  const noiseValue = noise(i * 0.4, 0)
+  const blended = sineValue * 0.7 + noiseValue * 0.3
+  return blended * (1 - coherence) * maxJitterMm
+}
+
+// Enforce minimum side length so no layer becomes a sliver.
+export function enforceMinSideLength(
+  layers: Layer[],
+  baseSize: number,
+  canvasHeight: number,
+): Layer[] {
+  const minSide = canvasHeight * baseSize * MIN_SIDE_RATIO
+  return layers.map((l) => {
+    const minCurrent = Math.min(l.width, l.height)
+    if (minCurrent >= minSide) return l
+    const scale = minSide / minCurrent
+    const width = l.width * scale
+    const height = l.height * scale
+    return {
+      ...l,
+      width,
+      height,
+      x: l.x - (width - l.width) / 2,
+      y: l.y - (height - l.height) / 2,
+      area: width * height,
+    }
+  })
+}
+
+// Rules A + E — lay out layers along the vertical axis with sine-based jitter.
 export function placeLayers(
   sizes: number[],
   proportions: number[],
@@ -71,17 +105,13 @@ export function placeLayers(
   const count = sizes.length
   if (count === 0) return []
 
-  // Target size of each layer: the larger dimension is baseSize * canvasHeight * weight.
   const baseMax = params.baseSize * canvasHeight
 
-  // First pass: compute widths/heights, then vertically stack with equal gaps.
-  const layers: Layer[] = []
-  let totalHeight = 0
   const tentative: { w: number; h: number; ratio: number }[] = []
+  let totalHeight = 0
   for (let i = 0; i < count; i++) {
     const weight = sizes[i]
     const ratio = proportions[i]
-    // Pick the long side as `baseMax * weight`; derive the short side from ratio.
     let w: number
     let h: number
     if (ratio >= 1) {
@@ -91,14 +121,12 @@ export function placeLayers(
       h = baseMax * weight
       w = h * ratio
     }
-    // Cap to canvas to avoid runaways.
     w = Math.min(w, canvasWidth * 0.95)
     h = Math.min(h, canvasHeight * 0.6)
     tentative.push({ w, h, ratio })
     totalHeight += h
   }
 
-  // Desired overall stack height: ~85% of canvas, leaving margin.
   const targetStackHeight = canvasHeight * 0.85
   const stackScale = totalHeight > targetStackHeight ? targetStackHeight / totalHeight : 1
   for (const t of tentative) {
@@ -107,24 +135,22 @@ export function placeLayers(
   }
 
   const finalStackHeight = tentative.reduce((a, t) => a + t.h, 0)
-  // Gap: negative so layers overlap by default — reinforces Rule D.
   const gapCount = Math.max(1, count - 1)
   const rawGap = (canvasHeight - finalStackHeight) / (gapCount + 2)
-  // Push gap slightly negative so consecutive layers overlap naturally.
   const gap = rawGap - Math.min(tentative[0].h * 0.15, 20)
 
   let cursorY = (canvasHeight - (finalStackHeight + gap * gapCount)) / 2
 
+  const maxJitterMm = canvasWidth * 0.15
+  const layers: Layer[] = []
+
   for (let i = 0; i < count; i++) {
     const { w, h } = tentative[i]
-
-    const jitterAmp = (1 - params.coherence) * canvasWidth * 0.15
-    const xJitter = noise1D(noise, i, 0.3) * jitterAmp
-
+    const xJitter = computeAxisJitter(i, params.coherence, noise, maxJitterMm)
     const localRot = noise1D(noise, i + 100, 0.5) * params.localVariation
     const rotation = params.globalTilt + localRot
 
-    const layer: Layer = {
+    layers.push({
       id: `layer-${i}`,
       x: (canvasWidth - w) / 2 + xJitter,
       y: cursorY,
@@ -134,13 +160,12 @@ export function placeLayers(
       skew: params.skew,
       colorHex: '#000000',
       area: w * h,
-    }
-    layers.push(layer)
+    })
     cursorY += h + gap
   }
 
-  // Keep layers inside the canvas bounds.
-  return clampToCanvas(layers, canvasWidth, canvasHeight)
+  const minSized = enforceMinSideLength(layers, params.baseSize, canvasHeight)
+  return clampToCanvas(minSized, canvasWidth, canvasHeight)
 }
 
 function clampToCanvas(layers: Layer[], canvasWidth: number, canvasHeight: number): Layer[] {
@@ -151,52 +176,82 @@ function clampToCanvas(layers: Layer[], canvasWidth: number, canvasHeight: numbe
   })
 }
 
-// Rule D — ensure every layer overlaps at least one neighbor.
-export function enforceOverlap(layers: Layer[], targetDensity: number): Layer[] {
+// Axis-aligned bounding box of a rotated rectangle centered on (cx, cy).
+function rotatedAABB(layer: Layer): {
+  top: number
+  bottom: number
+  left: number
+  right: number
+} {
+  const cx = layer.x + layer.width / 2
+  const cy = layer.y + layer.height / 2
+  const theta = (layer.rotation * Math.PI) / 180
+  const cos = Math.abs(Math.cos(theta))
+  const sin = Math.abs(Math.sin(theta))
+  const w2 = (layer.width * cos + layer.height * sin) / 2
+  const h2 = (layer.width * sin + layer.height * cos) / 2
+  return {
+    top: cy - h2,
+    bottom: cy + h2,
+    left: cx - w2,
+    right: cx + w2,
+  }
+}
+
+// Rule D — hard vertical-chain overlap. Every adjacent pair (by y order)
+// must overlap by at least `min(prevHeight, currHeight) * overlapDepth`,
+// unless the pair is one of the allowed "breathing room" gaps.
+export function enforceVerticalChain(
+  layers: Layer[],
+  overlapDepth: number,
+  breathingRoom: number,
+  rng: RNG,
+): Layer[] {
   if (layers.length < 2) return layers
-  const result = layers.map((l) => ({ ...l }))
+  const sorted = [...layers]
+    .sort((a, b) => a.y + a.height / 2 - (b.y + b.height / 2))
+    .map((l) => ({ ...l }))
 
-  for (let i = 0; i < result.length; i++) {
-    const a = result[i]
-    let bestIdx = -1
-    let bestDist = Infinity
-    for (let j = 0; j < result.length; j++) {
-      if (i === j) continue
-      const b = result[j]
-      const d = bboxGap(a, b)
-      if (d < bestDist) {
-        bestDist = d
-        bestIdx = j
+  const numPairs = sorted.length - 1
+  const numGapsAllowed = Math.floor(numPairs * breathingRoom)
+  const gapIndices = pickRandomIndices(numPairs, numGapsAllowed, rng)
+
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1]
+    const curr = sorted[i]
+
+    const prevBox = rotatedAABB(prev)
+    const currBox = rotatedAABB(curr)
+
+    const minDim = Math.min(prev.height, curr.height)
+    const pairIdx = i - 1
+
+    if (gapIndices.has(pairIdx)) {
+      // Allow a small intentional gap, but cap it at 0.5 * min height.
+      const maxGap = minDim * 0.5
+      const rawGap = currBox.top - prevBox.bottom
+      if (rawGap > maxGap) {
+        curr.y -= rawGap - maxGap
       }
+      continue
     }
-    if (bestIdx === -1) continue
-    if (bestDist <= 0) continue // already overlapping
 
-    const b = result[bestIdx]
-    const ax = a.x + a.width / 2
-    const ay = a.y + a.height / 2
-    const bx = b.x + b.width / 2
-    const by = b.y + b.height / 2
-    const dx = bx - ax
-    const dy = by - ay
-    const len = Math.hypot(dx, dy) || 1
-    const pullFactor = 0.3 + targetDensity * 0.7
-    const overlapBonus = Math.min(a.width, a.height) * 0.15
-    const shift = (bestDist + overlapBonus) * pullFactor
-    result[i] = {
-      ...a,
-      x: a.x + (dx / len) * shift,
-      y: a.y + (dy / len) * shift,
+    const minOverlapMm = minDim * overlapDepth
+    const gap = currBox.top - prevBox.bottom
+    if (gap > -minOverlapMm) {
+      curr.y -= gap + minOverlapMm
     }
   }
 
-  return result
+  return sorted
 }
 
-// Gap between two axis-aligned bounding boxes. <=0 means overlap.
-function bboxGap(a: Layer, b: Layer): number {
-  const dx = Math.max(b.x - (a.x + a.width), a.x - (b.x + b.width), 0)
-  const dy = Math.max(b.y - (a.y + a.height), a.y - (b.y + b.height), 0)
-  if (dx === 0 && dy === 0) return -1 // definitely overlapping
-  return Math.hypot(dx, dy)
+function pickRandomIndices(total: number, count: number, rng: RNG): Set<number> {
+  if (count <= 0 || total <= 0) return new Set()
+  const indices = Array.from({ length: total }, (_, i) => i)
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    ;[indices[i], indices[j]] = [indices[j], indices[i]]
+  }
+  return new Set(indices.slice(0, Math.min(count, total)))
 }
