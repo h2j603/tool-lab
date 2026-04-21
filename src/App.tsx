@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Canvas } from './ui/Canvas'
+import { ExportBar } from './ui/ExportBar'
 import { ParameterPanel } from './ui/ParameterPanel'
 import { SeedBar } from './ui/SeedBar'
 import { useStore } from './state/store'
@@ -28,8 +29,11 @@ export function App() {
         <main className="flex-1 min-w-0 bg-neutral-100">
           <Canvas />
         </main>
-        <aside className="w-80 border-l border-neutral-200 bg-white">
-          <ParameterPanel />
+        <aside className="w-80 border-l border-neutral-200 bg-white flex flex-col">
+          <div className="flex-1 min-h-0">
+            <ParameterPanel />
+          </div>
+          <ExportBar />
         </aside>
       </div>
     </div>

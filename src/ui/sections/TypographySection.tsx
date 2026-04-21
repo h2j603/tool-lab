@@ -1,5 +1,6 @@
 import { TypePlacement } from '../../engine/types'
 import { useStore } from '../../state/store'
+import { FontUpload } from '../FontUpload'
 import { Section } from '../primitives/Section'
 import { Select } from '../primitives/Select'
 import { Slider } from '../primitives/Slider'
@@ -14,7 +15,7 @@ const SYSTEM_FONTS: { value: string; label: string }[] = [
 export function TypographySection() {
   const params = useStore((s) => s.params)
   const update = useStore((s) => s.updateParams)
-  const isSystem = params.fontSource === 'system'
+  const uploadedFont = useStore((s) => s.uploadedFont)
   return (
     <Section id="typography" title="Typography">
       <label className="block text-xs">
@@ -26,7 +27,7 @@ export function TypographySection() {
           className="w-full border border-neutral-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-black resize-none"
         />
       </label>
-      {isSystem && (
+      {!uploadedFont && (
         <Select
           label="System font"
           value={params.fontFamily}
@@ -34,17 +35,7 @@ export function TypographySection() {
           onChange={(v) => update({ fontFamily: v })}
         />
       )}
-      {!isSystem && typeof params.fontSource === 'object' && (
-        <div className="text-xs text-neutral-600">
-          Uploaded: <span className="font-mono">{params.fontSource.name}</span>
-          <button
-            className="ml-2 underline hover:text-black"
-            onClick={() => update({ fontSource: 'system' })}
-          >
-            remove
-          </button>
-        </div>
-      )}
+      <FontUpload />
       <Slider
         label="Text size"
         value={params.textSize}
