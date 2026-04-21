@@ -15,9 +15,47 @@ export function CompositionSection() {
         options={[
           { value: 'rectangle', label: 'Rectangle' },
           { value: 'circle', label: 'Circle' },
+          { value: 'rock', label: 'Rock (noise polygon)' },
         ]}
         onChange={(v) => update({ blockShape: v })}
       />
+      {params.blockShape === 'rock' && (
+        <>
+          <Slider
+            label="Rock roughness"
+            value={params.rockParams.roughness}
+            min={0}
+            max={0.5}
+            step={0.01}
+            format={(v) => v.toFixed(2)}
+            onChange={(v) =>
+              update({ rockParams: { ...params.rockParams, roughness: v } })
+            }
+          />
+          <Slider
+            label="Rock spikiness"
+            value={params.rockParams.spikiness}
+            min={0}
+            max={1}
+            step={0.01}
+            format={(v) => v.toFixed(2)}
+            onChange={(v) =>
+              update({ rockParams: { ...params.rockParams, spikiness: v } })
+            }
+          />
+          <Slider
+            label="Rock vertices"
+            value={params.rockParams.vertexCount}
+            min={12}
+            max={64}
+            step={1}
+            format={(v) => v.toFixed(0)}
+            onChange={(v) =>
+              update({ rockParams: { ...params.rockParams, vertexCount: v } })
+            }
+          />
+        </>
+      )}
       <Slider
         label="Layers"
         value={params.layerCount}
@@ -38,20 +76,11 @@ export function CompositionSection() {
       <Slider
         label="Overlap depth"
         value={params.overlapDepth}
-        min={0.1}
-        max={0.4}
+        min={0.03}
+        max={0.2}
         step={0.01}
         format={(v) => v.toFixed(2)}
         onChange={(v) => update({ overlapDepth: v })}
-      />
-      <Slider
-        label="Breathing room"
-        value={params.breathingRoom}
-        min={0}
-        max={1}
-        step={0.05}
-        format={(v) => v.toFixed(2)}
-        onChange={(v) => update({ breathingRoom: v })}
       />
     </Section>
   )

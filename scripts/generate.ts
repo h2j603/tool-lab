@@ -49,9 +49,9 @@ function main() {
       seed,
       paletteId: args.palette ?? DEFAULT_PARAMS.paletteId,
       blockShape: args.shape ?? DEFAULT_PARAMS.blockShape,
-      moire: args.moire
-        ? { ...DEFAULT_PARAMS.moire, enabled: true }
-        : DEFAULT_PARAMS.moire,
+      pattern: args.moire
+        ? { ...DEFAULT_PARAMS.pattern, enabled: true, type: 'moire' as const }
+        : DEFAULT_PARAMS.pattern,
     }
     const poster = generatePoster(params, PRESET_PALETTES)
     const svg = posterToSvg(poster, { includeBleed: true, convertTextToPath: false })

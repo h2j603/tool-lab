@@ -18,7 +18,21 @@ export interface Palette {
 export type ProportionSet = 'classical' | 'extreme' | 'balanced'
 export type TypePlacement = 'boundary-cross' | 'single-layer' | 'scattered'
 export type CanvasSize = 'A3' | 'A2' | 'B1' | 'custom'
-export type BlockShape = 'rectangle' | 'circle'
+export type BlockShape = 'rectangle' | 'circle' | 'rock'
+
+export interface RockParams {
+  roughness: number   // 0..0.5
+  spikiness: number   // 0..1
+  vertexCount: number // 12..64
+}
+
+export interface RockPolygonData {
+  points: { x: number; y: number }[]
+  centerX: number
+  centerY: number
+  centroid: { x: number; y: number }
+  boundingBox: { x: number; y: number; width: number; height: number }
+}
 export type MacroMode = 'vertical-stack' | 'letter-form'
 export type BundledFontId = 'inter' | 'noto-sans-kr'
 export type LetterFormFontSource =
@@ -38,22 +52,58 @@ export interface ExperimentalFlags {
   enabled: boolean
 }
 
-export interface MoireParams {
+export type PatternType = 'moire' | 'stripes' | 'rings'
+export type RingsCenterMode = 'center' | 'offset' | 'random'
+
+export interface PatternParams {
   enabled: boolean
-  baseAngleDelta: number    // degrees, 0.5..10
-  baseSpacing: number       // mm, 0.5..5
-  baseDotRadius: number     // fraction of spacing, 0.15..0.45
-  variation: number         // 0..1, per-block deviation from base
-  interferenceColor: 'auto' | string  // 'auto' = darken the block color
+  type: PatternType
+  // Shared across all pattern types
+  density: number           // 0.2..1.0
+  contrast: number          // 0.3..1.0
+  variation: number         // 0..0.6
+  secondaryColor: 'auto' | string
+  // Type-specific
+  moire: { baseAngleDelta: number } // 0.3..5
+  stripes: { angle: number }        // 0..180 (degrees)
+  rings: { centerMode: RingsCenterMode; ringCount: number }
 }
 
-export interface LayerMoire {
-  angleDelta: number
-  spacing: number
-  dotRadius: number         // fraction of spacing
+export interface MoireLayerData {
+  type: 'moire'
   primaryColor: string
-  interferenceColor: string
+  secondaryColor: string
+  spacing: number
+  dotRadius: number
+  angleDelta: number
 }
+
+export interface StripesLayerData {
+  type: 'stripes'
+  primaryColor: string
+  secondaryColor: string
+  thickness: number
+  spacing: number
+  angle: number
+}
+
+export interface RingsLayerData {
+  type: 'rings'
+  primaryColor: string
+  secondaryColor: string
+  ringThickness: number
+  ringSpacing: number
+  ringCount: number
+  centerX: number
+  centerY: number
+}
+
+export type LayerPatternData = MoireLayerData | StripesLayerData | RingsLayerData
+
+// Back-compat aliases (deprecated, removed from runtime logic — kept only for
+// any outside importer that still refers to v0.2 names).
+export type MoireParams = PatternParams
+export type LayerMoire = MoireLayerData
 
 export type FontSource =
   | 'system'
@@ -91,9 +141,13 @@ export interface PosterParams {
   customCanvasWidth?: number
   customCanvasHeight?: number
   bleedMm: number
+  backgroundOverride: 'palette' | 'transparent'
 
   // Pattern
-  moire: MoireParams
+  pattern: PatternParams
+
+  // Rock-specific
+  rockParams: RockParams
 
   // Macro mode
   macroMode: MacroMode
@@ -115,7 +169,8 @@ export interface Layer {
   skew: number
   colorHex: string
   area: number
-  moire?: LayerMoire
+  pattern?: LayerPatternData
+  polygon?: RockPolygonData
 }
 
 export interface TypeBlock {

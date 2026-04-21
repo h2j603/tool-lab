@@ -46,6 +46,14 @@ export function CanvasSection() {
         checked={params.bleedMm > 0}
         onChange={(v) => update({ bleedMm: v ? 3 : 0 })}
       />
+      <Toggle
+        label="Transparent background"
+        description="Omit the background fill on export. Canvas shows a checkerboard so you can tell."
+        checked={params.backgroundOverride === 'transparent'}
+        onChange={(v) =>
+          update({ backgroundOverride: v ? 'transparent' : 'palette' })
+        }
+      />
     </Section>
   )
 }

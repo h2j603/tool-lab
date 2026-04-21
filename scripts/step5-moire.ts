@@ -38,7 +38,7 @@ function main() {
       macroMode: 'letter-form',
       layerCount: 6,
       blockShape: t.shape ?? 'rectangle',
-      moire: { ...DEFAULT_PARAMS.moire, enabled: true, variation: 0.4 },
+      pattern: { ...DEFAULT_PARAMS.pattern, enabled: true, type: 'moire', variation: 0.4 },
       letterForm: {
         ...DEFAULT_PARAMS.letterForm,
         text: t.text,
@@ -50,9 +50,13 @@ function main() {
     const svg = posterToSvg(poster, { includeBleed: true, convertTextToPath: false })
     const file = resolve(outDir, `letterform-moire-${t.text === '훈' ? 'hun' : t.text}.svg`)
     writeFileSync(file, svg, 'utf8')
-    const moireLayers = poster.layers.filter((l) => l.moire).length
-    const spacings = poster.layers.filter((l) => l.moire).map((l) => l.moire!.spacing)
-    const angles = poster.layers.filter((l) => l.moire).map((l) => l.moire!.angleDelta)
+    const moireLayers = poster.layers.filter((l) => l.pattern?.type === 'moire').length
+    const spacings = poster.layers
+      .map((l) => (l.pattern?.type === 'moire' ? l.pattern.spacing : null))
+      .filter((v): v is number => v != null)
+    const angles = poster.layers
+      .map((l) => (l.pattern?.type === 'moire' ? l.pattern.angleDelta : null))
+      .filter((v): v is number => v != null)
     const spread = (arr: number[]) => (Math.max(...arr) - Math.min(...arr)).toFixed(3)
     console.log(`wrote ${file}`)
     console.log(

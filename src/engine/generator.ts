@@ -10,7 +10,7 @@ import {
   generateLetterFormPoster,
   LetterFormContext,
 } from './letterFormGenerator'
-import { attachMoireParams } from './moire'
+import { attachPatternParams } from './pattern'
 import { createNoise2D, createRng } from './random'
 import {
   CANVAS_DIMENSIONS,
@@ -81,18 +81,21 @@ function generateVerticalStack(params: PosterParams, palette: Palette): Poster {
   let layers = placeLayers(sizes, proportions, params, rng, noise, canvasWidth, canvasHeight)
   layers = enforceVerticalChain(layers, params.overlapDepth, params.breathingRoom, rng)
   layers = assignColorsByWeight(layers, palette)
-  layers = attachMoireParams(layers, params.moire, rng, noise, palette)
+  layers = attachPatternParams(layers, params.pattern, rng, noise, palette)
 
   const typeBlocks = placeTypeBlocks(layers, params, rng)
 
   const background = palette.colors.find((c) => c.role === 'background')
   if (!background) throw new Error(`Palette "${palette.id}" missing background color`)
 
+  const backgroundHex =
+    params.backgroundOverride === 'transparent' ? 'transparent' : background.hex
+
   return {
     canvasWidth,
     canvasHeight,
     bleedMm,
-    backgroundHex: background.hex,
+    backgroundHex,
     layers,
     typeBlocks,
     seed: params.seed,

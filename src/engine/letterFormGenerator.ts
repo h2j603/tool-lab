@@ -11,7 +11,7 @@ import {
   allocateBlocksToRegions,
   constrainLayersToRegion,
 } from './letterFormLayout'
-import { attachMoireParams } from './moire'
+import { attachPatternParams } from './pattern'
 import { createNoise2D, createRng } from './random'
 import { resolveCanvasDimensions } from './generator'
 import { Layer, Palette, Poster, PosterParams } from './types'
@@ -88,16 +88,19 @@ export function generateLetterFormPoster(
   const colored = assignColorsByWeight(allLayers, palette)
 
   // Patterns apply per-layer identically to the Vertical Stack pipeline.
-  const withPatterns = attachMoireParams(colored, params.moire, rng, noise, palette)
+  const withPatterns = attachPatternParams(colored, params.pattern, rng, noise, palette)
 
   const background = palette.colors.find((c) => c.role === 'background')
   if (!background) throw new Error(`Palette "${palette.id}" missing background color`)
+
+  const backgroundHex =
+    params.backgroundOverride === 'transparent' ? 'transparent' : background.hex
 
   return {
     canvasWidth,
     canvasHeight,
     bleedMm,
-    backgroundHex: background.hex,
+    backgroundHex,
     layers: withPatterns,
     typeBlocks: [],
     seed: params.seed,

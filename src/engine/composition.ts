@@ -1,4 +1,6 @@
+import { polygonsIntersect } from './polygonIntersection'
 import { NoiseFn, RNG, noise1D, shuffle } from './random'
+import { generateRock, translateRock } from './rockShape'
 import { Layer, PosterParams, ProportionSet } from './types'
 
 export const PROPORTION_SETS: Record<ProportionSet, number[]> = {
@@ -158,6 +160,73 @@ function placeRectangleLayers(
   return layers
 }
 
+function placeRockLayers(
+  sizes: number[],
+  params: PosterParams,
+  noise: NoiseFn,
+  canvasWidth: number,
+  canvasHeight: number,
+): Layer[] {
+  const count = sizes.length
+  const baseMax = params.baseSize * canvasHeight
+
+  // Treat each rock as a noisy circle of radius baseMax*weight/2.
+  const radii = sizes.map((w) => Math.min(
+    (baseMax * w) / 2,
+    (canvasWidth * 0.95) / 2,
+    (canvasHeight * 0.6) / 2,
+  ))
+
+  const totalHeight = radii.reduce((a, r) => a + r * 2, 0)
+  const target = canvasHeight * 0.85
+  const stackScale = totalHeight > target ? target / totalHeight : 1
+  const scaled = radii.map((r) => r * stackScale)
+
+  const finalHeight = scaled.reduce((a, r) => a + r * 2, 0)
+  const gapCount = Math.max(1, count - 1)
+  const rawGap = (canvasHeight - finalHeight) / (gapCount + 2)
+  const gap = rawGap - Math.min(scaled[0] * 0.15, 20)
+
+  let cursorY = (canvasHeight - (finalHeight + gap * gapCount)) / 2 + scaled[0]
+  const maxJitterMm = canvasWidth * 0.15
+  const layers: Layer[] = []
+
+  for (let i = 0; i < count; i++) {
+    const r = scaled[i]
+    const xJitter = computeAxisJitter(i, params.coherence, noise, maxJitterMm)
+    const centerX = canvasWidth / 2 + xJitter
+    const centerY = cursorY
+
+    const rock = generateRock(
+      centerX,
+      centerY,
+      r,
+      i,
+      params.rockParams,
+      noise,
+    )
+
+    layers.push({
+      id: `layer-${i}`,
+      shape: 'rock',
+      x: rock.boundingBox.x,
+      y: rock.boundingBox.y,
+      width: rock.boundingBox.width,
+      height: rock.boundingBox.height,
+      rotation: 0,
+      skew: 0,
+      colorHex: '#000000',
+      area: rock.boundingBox.width * rock.boundingBox.height,
+      polygon: rock,
+    })
+
+    const nextR = i + 1 < count ? scaled[i + 1] : r
+    cursorY += r + gap + nextR
+  }
+
+  return layers
+}
+
 function placeCircleLayers(
   sizes: number[],
   params: PosterParams,
@@ -221,15 +290,19 @@ export function placeLayers(
 ): Layer[] {
   if (sizes.length === 0) return []
 
-  const layers =
-    params.blockShape === 'circle'
-      ? placeCircleLayers(sizes, params, noise, canvasWidth, canvasHeight)
-      : placeRectangleLayers(sizes, proportions, params, noise, canvasWidth, canvasHeight)
+  let layers: Layer[]
+  if (params.blockShape === 'rock') {
+    layers = placeRockLayers(sizes, params, noise, canvasWidth, canvasHeight)
+  } else if (params.blockShape === 'circle') {
+    layers = placeCircleLayers(sizes, params, noise, canvasWidth, canvasHeight)
+  } else {
+    layers = placeRectangleLayers(sizes, proportions, params, noise, canvasWidth, canvasHeight)
+  }
 
   const minSized =
-    params.blockShape === 'circle'
-      ? layers
-      : enforceMinSideLength(layers, params.baseSize, canvasHeight)
+    params.blockShape === 'rectangle'
+      ? enforceMinSideLength(layers, params.baseSize, canvasHeight)
+      : layers
   return clampToCanvas(minSized, canvasWidth, canvasHeight)
 }
 
@@ -237,6 +310,12 @@ function clampToCanvas(layers: Layer[], canvasWidth: number, canvasHeight: numbe
   return layers.map((l) => {
     const x = Math.max(-l.width * 0.1, Math.min(canvasWidth - l.width * 0.9, l.x))
     const y = Math.max(-l.height * 0.1, Math.min(canvasHeight - l.height * 0.9, l.y))
+    if (l.shape === 'rock' && l.polygon) {
+      const dx = x - l.x
+      const dy = y - l.y
+      const p = translateRock(l.polygon, dx, dy)
+      return { ...l, x, y, polygon: p }
+    }
     return { ...l, x, y }
   })
 }
@@ -266,104 +345,119 @@ function rotatedAABB(layer: Layer): {
   }
 }
 
-// Rule D — hard vertical-chain overlap, shape-aware.
-// Rectangles: axis-aligned gap on rotated bbox; pull down along Y.
-// Circles: center-to-center distance; pull along the connecting line.
+// Rule D — vertical-chain overlap clamped into a tight BAND.
+// Every adjacent pair has an overlap of at least `min(overlap, layerMinDim * minRatio)`
+// and at most `layerMinDim * maxRatio`, where the ratios flank `overlapDepth`.
+// This replaces the v0.2 floor-only semantic per v0.3 feedback.
 export function enforceVerticalChain(
   layers: Layer[],
   overlapDepth: number,
-  breathingRoom: number,
-  rng: RNG,
+  _breathingRoom: number, // retained signature arg but ignored (v0.3 removed the concept)
+  _rng: RNG,
 ): Layer[] {
   if (layers.length < 2) return layers
   const sorted = [...layers]
     .sort((a, b) => a.y + a.height / 2 - (b.y + b.height / 2))
     .map((l) => ({ ...l }))
 
-  const numPairs = sorted.length - 1
-  const numGapsAllowed = Math.floor(numPairs * breathingRoom)
-  const gapIndices = pickRandomIndices(numPairs, numGapsAllowed, rng)
+  // Tight band around the target depth. Floor 3%, ceiling 20%.
+  const minRatio = Math.max(0.03, overlapDepth - 0.05)
+  const maxRatio = Math.min(0.2, overlapDepth + 0.05)
 
   for (let i = 1; i < sorted.length; i++) {
     const prev = sorted[i - 1]
     const curr = sorted[i]
-    const allowGap = gapIndices.has(i - 1)
 
-    if (prev.shape === 'circle' && curr.shape === 'circle') {
-      enforceCirclePair(prev, curr, overlapDepth, allowGap)
+    if (prev.shape === 'rock' && curr.shape === 'rock') {
+      enforceRockPair(prev, curr, minRatio, maxRatio)
+    } else if (prev.shape === 'circle' && curr.shape === 'circle') {
+      enforceCirclePair(prev, curr, minRatio, maxRatio)
     } else {
-      enforceRectPair(prev, curr, overlapDepth, allowGap)
+      enforceRectPair(prev, curr, minRatio, maxRatio)
     }
   }
 
   return sorted
 }
 
-function enforceRectPair(prev: Layer, curr: Layer, overlapDepth: number, allowGap: boolean): void {
+function enforceRockPair(prev: Layer, curr: Layer, minRatio: number, maxRatio: number): void {
+  if (!prev.polygon || !curr.polygon) return
+  const minDim = Math.min(prev.polygon.boundingBox.height, curr.polygon.boundingBox.height)
+  const minOverlap = minDim * minRatio
+  const maxOverlap = minDim * maxRatio
+  // Use bbox overlap as the pull magnitude; SAT for the yes/no intersection test.
+  const currentOverlap =
+    prev.polygon.boundingBox.y + prev.polygon.boundingBox.height -
+    curr.polygon.boundingBox.y
+  let dy = 0
+  // Step 1: coarse pull based on bbox overlap into band.
+  if (currentOverlap < minOverlap) {
+    dy = -(minOverlap - currentOverlap)
+  } else if (currentOverlap > maxOverlap) {
+    dy = currentOverlap - maxOverlap
+  }
+  if (dy !== 0) {
+    curr.polygon = translateRock(curr.polygon, 0, dy)
+  }
+  // Step 2: if SAT still separates them despite bbox overlap, pull until SAT says
+  // they intersect. Bounded at half the minDim of pull to avoid runaway.
+  if (!polygonsIntersect(prev.polygon.points, curr.polygon.points)) {
+    let extra = 0
+    const stepPx = Math.max(0.5, minDim * 0.05)
+    while (
+      extra < minDim &&
+      !polygonsIntersect(prev.polygon.points, curr.polygon.points)
+    ) {
+      curr.polygon = translateRock(curr.polygon, 0, -stepPx)
+      extra += stepPx
+    }
+  }
+  curr.x = curr.polygon.boundingBox.x
+  curr.y = curr.polygon.boundingBox.y
+  curr.width = curr.polygon.boundingBox.width
+  curr.height = curr.polygon.boundingBox.height
+}
+
+function enforceRectPair(prev: Layer, curr: Layer, minRatio: number, maxRatio: number): void {
   const prevBox = rotatedAABB(prev)
   const currBox = rotatedAABB(curr)
   const minDim = Math.min(prev.height, curr.height)
-
-  if (allowGap) {
-    const maxGap = minDim * 0.5
-    const rawGap = currBox.top - prevBox.bottom
-    if (rawGap > maxGap) {
-      curr.y -= rawGap - maxGap
-    }
-    return
-  }
-
-  const minOverlapMm = minDim * overlapDepth
-  const gap = currBox.top - prevBox.bottom
-  if (gap > -minOverlapMm) {
-    curr.y -= gap + minOverlapMm
+  const minOverlap = minDim * minRatio
+  const maxOverlap = minDim * maxRatio
+  // currentOverlap > 0 = overlapping, < 0 = separated gap
+  const currentOverlap = prevBox.bottom - currBox.top
+  if (currentOverlap < minOverlap) {
+    curr.y -= minOverlap - currentOverlap
+  } else if (currentOverlap > maxOverlap) {
+    curr.y += currentOverlap - maxOverlap
   }
 }
 
-function enforceCirclePair(
-  prev: Layer,
-  curr: Layer,
-  overlapDepth: number,
-  allowGap: boolean,
-): void {
+function enforceCirclePair(prev: Layer, curr: Layer, minRatio: number, maxRatio: number): void {
   const prevCx = prev.x + prev.width / 2
   const prevCy = prev.y + prev.height / 2
   const currCx = curr.x + curr.width / 2
   const currCy = curr.y + curr.height / 2
-
   const dx = currCx - prevCx
   const dy = currCy - prevCy
   const dist = Math.hypot(dx, dy) || 1
   const ux = dx / dist
   const uy = dy / dist
-
   const sumRadii = (prev.width + curr.width) / 2
   const minDiameter = Math.min(prev.width, curr.width)
-
-  if (allowGap) {
-    const maxCenterDist = sumRadii + minDiameter * 0.5
-    if (dist > maxCenterDist) {
-      const pull = dist - maxCenterDist
-      curr.x -= ux * pull
-      curr.y -= uy * pull
-    }
-    return
-  }
-
-  const requiredDist = sumRadii - minDiameter * overlapDepth
-  if (dist > requiredDist) {
-    const pull = dist - requiredDist
+  // Overlap depth along connecting line. Positive = overlapping.
+  const currentOverlap = sumRadii - dist
+  const minOverlap = minDiameter * minRatio
+  const maxOverlap = minDiameter * maxRatio
+  if (currentOverlap < minOverlap) {
+    // Pull curr toward prev.
+    const pull = minOverlap - currentOverlap
     curr.x -= ux * pull
     curr.y -= uy * pull
+  } else if (currentOverlap > maxOverlap) {
+    // Push curr away from prev.
+    const push = currentOverlap - maxOverlap
+    curr.x += ux * push
+    curr.y += uy * push
   }
-}
-
-function pickRandomIndices(total: number, count: number, rng: RNG): Set<number> {
-  if (count <= 0 || total <= 0) return new Set()
-  const indices = Array.from({ length: total }, (_, i) => i)
-  for (let i = indices.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1))
-    ;[indices[i], indices[j]] = [indices[j], indices[i]]
-  }
-  return new Set(indices.slice(0, Math.min(count, total)))
 }

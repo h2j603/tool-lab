@@ -3,7 +3,7 @@ import { PosterParams } from '../engine/types'
 export const DEFAULT_PARAMS: PosterParams = {
   layerCount: 4,
   coherence: 0.65,
-  overlapDepth: 0.2,
+  overlapDepth: 0.08,
   breathingRoom: 0,
   blockShape: 'rectangle',
 
@@ -24,14 +24,24 @@ export const DEFAULT_PARAMS: PosterParams = {
 
   canvasSize: 'A3',
   bleedMm: 3,
+  backgroundOverride: 'palette',
 
-  moire: {
+  pattern: {
     enabled: false,
-    baseAngleDelta: 2,
-    baseSpacing: 2,
-    baseDotRadius: 0.35,
-    variation: 0.4,
-    interferenceColor: 'auto',
+    type: 'moire',
+    density: 0.6,
+    contrast: 0.7,
+    variation: 0.25,
+    secondaryColor: 'auto',
+    moire: { baseAngleDelta: 1.5 },
+    stripes: { angle: 0 },
+    rings: { centerMode: 'offset', ringCount: 8 },
+  },
+
+  rockParams: {
+    roughness: 0.2,
+    spikiness: 0.3,
+    vertexCount: 24,
   },
 
   macroMode: 'vertical-stack',

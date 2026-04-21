@@ -23,11 +23,43 @@ function loadPersisted(): Persisted | null {
       parsed.params.fontSource = 'system'
     }
     // Merge with defaults so schema changes don't leave params partially populated.
-    const migrated = { ...DEFAULT_PARAMS, ...parsed.params } as PosterParams & {
+    const merged = { ...DEFAULT_PARAMS, ...parsed.params } as PosterParams & {
       overlapDensity?: number
+      moire?: {
+        enabled?: boolean
+        baseAngleDelta?: number
+        variation?: number
+        interferenceColor?: string
+      }
     }
-    delete migrated.overlapDensity
-    parsed.params = migrated
+    delete merged.overlapDensity
+
+    // v0.2 → v0.4 migration: lift legacy `moire` object into the new
+    // `pattern` discriminated union so users keep their on/off state.
+    if (merged.moire && (!parsed.params.pattern || parsed.params.pattern === undefined)) {
+      merged.pattern = {
+        ...DEFAULT_PARAMS.pattern,
+        enabled: !!merged.moire.enabled,
+        type: 'moire',
+        variation:
+          typeof merged.moire.variation === 'number'
+            ? Math.min(0.6, merged.moire.variation)
+            : DEFAULT_PARAMS.pattern.variation,
+        secondaryColor:
+          typeof merged.moire.interferenceColor === 'string'
+            ? merged.moire.interferenceColor
+            : 'auto',
+        moire: {
+          baseAngleDelta:
+            typeof merged.moire.baseAngleDelta === 'number'
+              ? Math.min(5, Math.max(0.3, merged.moire.baseAngleDelta))
+              : DEFAULT_PARAMS.pattern.moire.baseAngleDelta,
+        },
+      }
+    }
+    delete merged.moire
+
+    parsed.params = merged
     return parsed
   } catch {
     return null

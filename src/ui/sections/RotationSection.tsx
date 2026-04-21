@@ -5,15 +5,15 @@ import { Slider } from '../primitives/Slider'
 export function RotationSection() {
   const params = useStore((s) => s.params)
   const update = useStore((s) => s.updateParams)
-  const isCircle = params.blockShape === 'circle'
+  const noRotation = params.blockShape === 'circle' || params.blockShape === 'rock'
   return (
     <Section id="rotation" title="Rotation">
-      {isCircle && (
+      {noRotation && (
         <div className="text-xs text-neutral-500 italic pb-1">
-          Rotation has no visual effect on circles; controls disabled.
+          Rotation has no visual effect on {params.blockShape}s; controls disabled.
         </div>
       )}
-      <div className={isCircle ? 'opacity-40 pointer-events-none' : ''}>
+      <div className={noRotation ? 'opacity-40 pointer-events-none' : ''}>
         <Slider
           label="Global tilt"
           value={params.globalTilt}

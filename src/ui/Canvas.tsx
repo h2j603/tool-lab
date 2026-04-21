@@ -29,7 +29,8 @@ export function Canvas() {
   const bleed = poster.bleedMm
   const totalW = poster.canvasWidth + bleed * 2
   const totalH = poster.canvasHeight + bleed * 2
-  const moireLayers = poster.layers.filter((l) => l.moire)
+  const patternedLayers = poster.layers.filter((l) => l.pattern)
+  const transparent = poster.backgroundHex === 'transparent'
 
   return (
     <div className="w-full h-full flex items-center justify-center p-4 sm:p-6 lg:p-8">
@@ -40,14 +41,32 @@ export function Canvas() {
         style={{ aspectRatio: `${totalW} / ${totalH}`, boxShadow: '0 6px 40px rgba(0,0,0,0.12)' }}
         preserveAspectRatio="xMidYMid meet"
       >
-        <rect x={0} y={0} width={totalW} height={totalH} fill={poster.backgroundHex} />
-        {moireLayers.length > 0 && (
-          <defs>
-            {moireLayers.map((l) => (
-              <MoireDefs key={l.id} layer={l} />
-            ))}
-          </defs>
-        )}
+        <defs>
+          {transparent && (
+            <pattern
+              id="canvas-transparent-checker"
+              x={0}
+              y={0}
+              width={8}
+              height={8}
+              patternUnits="userSpaceOnUse"
+            >
+              <rect width={8} height={8} fill="#ffffff" />
+              <rect width={4} height={4} fill="#e5e5e5" />
+              <rect x={4} y={4} width={4} height={4} fill="#e5e5e5" />
+            </pattern>
+          )}
+          {patternedLayers.map((l) => (
+            <PatternDefs key={l.id} layer={l} index={poster.layers.indexOf(l)} />
+          ))}
+        </defs>
+        <rect
+          x={0}
+          y={0}
+          width={totalW}
+          height={totalH}
+          fill={transparent ? 'url(#canvas-transparent-checker)' : poster.backgroundHex}
+        />
         <g transform={`translate(${bleed} ${bleed})`}>
           {poster.layers.map((l, i) => (
             <LayerGroup key={l.id} layer={l} index={i} />
@@ -79,10 +98,10 @@ export function Canvas() {
             width={poster.canvasWidth}
             height={poster.canvasHeight}
             fill="none"
-            stroke="#000"
-            strokeWidth={0.1}
+            stroke={transparent ? '#cccccc' : '#000000'}
+            strokeWidth={0.2}
             strokeDasharray="2 2"
-            opacity={0.2}
+            opacity={transparent ? 0.9 : 0.2}
           />
         )}
       </svg>
@@ -90,57 +109,77 @@ export function Canvas() {
   )
 }
 
-function MoireDefs({ layer }: { layer: Layer }) {
-  const m = layer.moire!
-  const dotR = m.dotRadius * m.spacing
-  const half = m.spacing / 2
-  const id = layer.id
+function clipElement(layer: Layer): JSX.Element {
   const cx = layer.x + layer.width / 2
   const cy = layer.y + layer.height / 2
-
-  let clip: JSX.Element
-  if (layer.shape === 'circle') {
-    clip = <circle cx={cx} cy={cy} r={layer.width / 2} />
-  } else {
-    const transforms: string[] = []
-    if (layer.rotation !== 0) transforms.push(`rotate(${layer.rotation} ${cx} ${cy})`)
-    if (layer.skew !== 0) transforms.push(`skewX(${layer.skew})`)
-    const transform = transforms.join(' ') || undefined
-    clip = (
-      <rect
-        x={layer.x}
-        y={layer.y}
-        width={layer.width}
-        height={layer.height}
-        transform={transform}
-      />
-    )
+  if (layer.shape === 'rock' && layer.polygon) {
+    const pts = layer.polygon.points.map((p) => `${p.x},${p.y}`).join(' ')
+    return <polygon points={pts} />
   }
+  if (layer.shape === 'circle') {
+    return <circle cx={cx} cy={cy} r={layer.width / 2} />
+  }
+  const transforms: string[] = []
+  if (layer.rotation !== 0) transforms.push(`rotate(${layer.rotation} ${cx} ${cy})`)
+  if (layer.skew !== 0) transforms.push(`skewX(${layer.skew})`)
+  const transform = transforms.join(' ') || undefined
+  return (
+    <rect
+      x={layer.x}
+      y={layer.y}
+      width={layer.width}
+      height={layer.height}
+      transform={transform}
+    />
+  )
+}
+
+function PatternDefs({ layer, index }: { layer: Layer; index: number }) {
+  const p = layer.pattern!
+  const id = `layer-${index}`
+  const half = p.type === 'moire' ? p.spacing / 2 : 0
 
   return (
     <>
-      <pattern
-        id={`moire-primary-${id}`}
-        x={0}
-        y={0}
-        width={m.spacing}
-        height={m.spacing}
-        patternUnits="userSpaceOnUse"
-      >
-        <circle cx={half} cy={half} r={dotR} fill={m.primaryColor} />
-      </pattern>
-      <pattern
-        id={`moire-interference-${id}`}
-        x={0}
-        y={0}
-        width={m.spacing}
-        height={m.spacing}
-        patternUnits="userSpaceOnUse"
-        patternTransform={`rotate(${m.angleDelta})`}
-      >
-        <circle cx={half} cy={half} r={dotR} fill={m.interferenceColor} />
-      </pattern>
-      <clipPath id={`clip-${id}`}>{clip}</clipPath>
+      {p.type === 'moire' && (
+        <>
+          <pattern
+            id={`pattern-primary-${id}`}
+            x={0}
+            y={0}
+            width={p.spacing}
+            height={p.spacing}
+            patternUnits="userSpaceOnUse"
+          >
+            <circle cx={half} cy={half} r={p.dotRadius} fill={p.primaryColor} />
+          </pattern>
+          <pattern
+            id={`pattern-secondary-${id}`}
+            x={0}
+            y={0}
+            width={p.spacing}
+            height={p.spacing}
+            patternUnits="userSpaceOnUse"
+            patternTransform={`rotate(${p.angleDelta})`}
+          >
+            <circle cx={half} cy={half} r={p.dotRadius} fill={p.secondaryColor} />
+          </pattern>
+        </>
+      )}
+      {p.type === 'stripes' && (
+        <pattern
+          id={`pattern-stripes-${id}`}
+          x={0}
+          y={0}
+          width={p.spacing}
+          height={p.spacing}
+          patternUnits="userSpaceOnUse"
+          patternTransform={`rotate(${p.angle})`}
+        >
+          <rect x={0} y={0} width={p.spacing} height={p.thickness} fill={p.secondaryColor} />
+        </pattern>
+      )}
+      <clipPath id={`clip-${id}`}>{clipElement(layer)}</clipPath>
     </>
   )
 }
@@ -164,29 +203,57 @@ function layerBoundingRect(layer: Layer) {
 function LayerGroup({ layer, index }: { layer: Layer; index: number }) {
   const cx = layer.x + layer.width / 2
   const cy = layer.y + layer.height / 2
-  const hasMoire = !!layer.moire
   const id = `layer-${index}`
+  const p = layer.pattern
 
-  if (hasMoire) {
+  if (p) {
     const bb = layerBoundingRect(layer)
+    const clipId = `url(#clip-${id})`
+    if (p.type === 'moire') {
+      return (
+        <g id={id}>
+          <rect x={bb.x} y={bb.y} width={bb.w} height={bb.h} fill={`url(#pattern-primary-${id})`} clipPath={clipId} />
+          <rect x={bb.x} y={bb.y} width={bb.w} height={bb.h} fill={`url(#pattern-secondary-${id})`} clipPath={clipId} />
+        </g>
+      )
+    }
+    if (p.type === 'stripes') {
+      return (
+        <g id={id}>
+          <rect x={bb.x} y={bb.y} width={bb.w} height={bb.h} fill={p.primaryColor} clipPath={clipId} />
+          <rect x={bb.x} y={bb.y} width={bb.w} height={bb.h} fill={`url(#pattern-stripes-${id})`} clipPath={clipId} />
+        </g>
+      )
+    }
+    // rings
+    const rings = []
+    for (let i = 0; i < p.ringCount; i++) {
+      const r = p.ringSpacing * (i + 0.5)
+      rings.push(
+        <circle
+          key={i}
+          cx={p.centerX}
+          cy={p.centerY}
+          r={r}
+          fill="none"
+          stroke={p.secondaryColor}
+          strokeWidth={p.ringThickness}
+        />,
+      )
+    }
     return (
       <g id={id}>
-        <rect
-          x={bb.x}
-          y={bb.y}
-          width={bb.w}
-          height={bb.h}
-          fill={`url(#moire-primary-${layer.id})`}
-          clipPath={`url(#clip-${layer.id})`}
-        />
-        <rect
-          x={bb.x}
-          y={bb.y}
-          width={bb.w}
-          height={bb.h}
-          fill={`url(#moire-interference-${layer.id})`}
-          clipPath={`url(#clip-${layer.id})`}
-        />
+        <rect x={bb.x} y={bb.y} width={bb.w} height={bb.h} fill={p.primaryColor} clipPath={clipId} />
+        <g clipPath={clipId}>{rings}</g>
+      </g>
+    )
+  }
+
+  if (layer.shape === 'rock' && layer.polygon) {
+    const pts = layer.polygon.points.map((pp) => `${pp.x},${pp.y}`).join(' ')
+    return (
+      <g id={id}>
+        <polygon points={pts} fill={layer.colorHex} />
       </g>
     )
   }
