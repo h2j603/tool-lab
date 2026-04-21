@@ -1,5 +1,5 @@
 import { useStore } from '../../state/store'
-import { ColorSwatch } from '../primitives/ColorSwatch'
+import { PaletteEditor } from '../PaletteEditor'
 import { Section } from '../primitives/Section'
 import { Select } from '../primitives/Select'
 
@@ -14,19 +14,14 @@ export function ColorSection() {
       <Select
         label="Palette"
         value={params.paletteId}
-        options={palettes.map((p) => ({ value: p.id, label: p.isCustom ? `${p.name} *` : p.name }))}
+        options={palettes.map((p) => ({
+          value: p.id,
+          label: p.isCustom ? `${p.name} (custom)` : p.name,
+        }))}
         onChange={(v) => update({ paletteId: v })}
       />
-      {active && (
-        <>
-          <div className="text-xs text-neutral-500 italic">{active.character}</div>
-          <div className="flex gap-1.5 flex-wrap">
-            {active.colors.map((c, i) => (
-              <ColorSwatch key={i} hex={c.hex} title={`${c.role}: ${c.hex}`} />
-            ))}
-          </div>
-        </>
-      )}
+      {active && <div className="text-xs text-neutral-500 italic">{active.character}</div>}
+      <PaletteEditor />
     </Section>
   )
 }
