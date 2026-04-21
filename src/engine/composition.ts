@@ -1,16 +1,18 @@
+import { polygonsIntersect } from './polygonIntersection'
 import { NoiseFn, RNG, noise1D, shuffle } from './random'
+import { generateRock, translateRock } from './rockShape'
 import { Layer, PosterParams, ProportionSet } from './types'
 
 export const PROPORTION_SETS: Record<ProportionSet, number[]> = {
-  classical: [1, Math.SQRT2, 1.618, 2, 3, 5],
-  extreme: [1, 2, 4, 7, 11],
+  classical: [1, Math.SQRT2, 1.618, 2, 3],
+  extreme: [1, 2, 3, 5, 7],
   balanced: [1, Math.SQRT2, 2],
 }
 
 const FIBONACCI_WEIGHTS = [1, 2, 3, 5, 8, 13, 21]
 
-// Rule B — weighted sizes in [0, 1].
-// Experimental mode allows near-equal sizes with a small jitter.
+const MIN_SIDE_RATIO = 0.25
+
 export function generateWeightedSizes(
   count: number,
   rng: RNG,
@@ -19,26 +21,20 @@ export function generateWeightedSizes(
   if (count <= 0) return []
 
   if (experimentalEqualSizes) {
-    // Equal sizes with subtle variance (±10%).
     return Array.from({ length: count }, () => 0.8 + (rng() - 0.5) * 0.2)
   }
 
   const base = FIBONACCI_WEIGHTS.slice(0, count)
   const total = base.reduce((a, b) => a + b, 0)
-  // Normalize so the mean is near 1; scale so the largest maps to ~1.
   const max = base[base.length - 1]
   const normalized = base.map((w) => w / max)
-  // Make sure even the smallest weight isn't invisible.
   const floored = normalized.map((v) => Math.max(0.12, v))
-  // Re-normalize so the mean preserves rough total area.
   const sum = floored.reduce((a, b) => a + b, 0)
   const scale = total / max / sum
   const sized = floored.map((v) => Math.min(1, v * scale))
   return shuffle(sized, rng)
 }
 
-// Rule C — aspect ratios pulled from a restricted set.
-// Experimental mode draws free ratios from [0.6, 2.5].
 export function pickProportions(
   count: number,
   set: ProportionSet,
@@ -52,36 +48,63 @@ export function pickProportions(
   const result: number[] = []
   for (let i = 0; i < count; i++) {
     const ratio = pool[Math.floor(rng() * pool.length)]
-    // Randomly invert to get vertical layers too, ~30% of the time.
     result.push(rng() < 0.3 ? 1 / ratio : ratio)
   }
   return result
 }
 
-// Rules A + E — lay out layers along the vertical axis with noise jitter.
-export function placeLayers(
+export function computeAxisJitter(
+  i: number,
+  coherence: number,
+  noise: NoiseFn,
+  maxJitterMm: number,
+): number {
+  const phase = Math.PI / 2
+  const sineValue = Math.sin(i * Math.PI + phase)
+  const noiseValue = noise(i * 0.4, 0)
+  const blended = sineValue * 0.7 + noiseValue * 0.3
+  return blended * (1 - coherence) * maxJitterMm
+}
+
+export function enforceMinSideLength(
+  layers: Layer[],
+  baseSize: number,
+  canvasHeight: number,
+): Layer[] {
+  const minSide = canvasHeight * baseSize * MIN_SIDE_RATIO
+  return layers.map((l) => {
+    const minCurrent = Math.min(l.width, l.height)
+    if (minCurrent >= minSide) return l
+    const scale = minSide / minCurrent
+    const width = l.width * scale
+    const height = l.height * scale
+    return {
+      ...l,
+      width,
+      height,
+      x: l.x - (width - l.width) / 2,
+      y: l.y - (height - l.height) / 2,
+      area: width * height,
+    }
+  })
+}
+
+function placeRectangleLayers(
   sizes: number[],
   proportions: number[],
   params: PosterParams,
-  _rng: RNG,
   noise: NoiseFn,
   canvasWidth: number,
   canvasHeight: number,
 ): Layer[] {
   const count = sizes.length
-  if (count === 0) return []
-
-  // Target size of each layer: the larger dimension is baseSize * canvasHeight * weight.
   const baseMax = params.baseSize * canvasHeight
 
-  // First pass: compute widths/heights, then vertically stack with equal gaps.
-  const layers: Layer[] = []
+  const tentative: { w: number; h: number }[] = []
   let totalHeight = 0
-  const tentative: { w: number; h: number; ratio: number }[] = []
   for (let i = 0; i < count; i++) {
     const weight = sizes[i]
     const ratio = proportions[i]
-    // Pick the long side as `baseMax * weight`; derive the short side from ratio.
     let w: number
     let h: number
     if (ratio >= 1) {
@@ -91,14 +114,12 @@ export function placeLayers(
       h = baseMax * weight
       w = h * ratio
     }
-    // Cap to canvas to avoid runaways.
     w = Math.min(w, canvasWidth * 0.95)
     h = Math.min(h, canvasHeight * 0.6)
-    tentative.push({ w, h, ratio })
+    tentative.push({ w, h })
     totalHeight += h
   }
 
-  // Desired overall stack height: ~85% of canvas, leaving margin.
   const targetStackHeight = canvasHeight * 0.85
   const stackScale = totalHeight > targetStackHeight ? targetStackHeight / totalHeight : 1
   for (const t of tentative) {
@@ -107,25 +128,23 @@ export function placeLayers(
   }
 
   const finalStackHeight = tentative.reduce((a, t) => a + t.h, 0)
-  // Gap: negative so layers overlap by default — reinforces Rule D.
   const gapCount = Math.max(1, count - 1)
   const rawGap = (canvasHeight - finalStackHeight) / (gapCount + 2)
-  // Push gap slightly negative so consecutive layers overlap naturally.
   const gap = rawGap - Math.min(tentative[0].h * 0.15, 20)
 
   let cursorY = (canvasHeight - (finalStackHeight + gap * gapCount)) / 2
+  const maxJitterMm = canvasWidth * 0.15
+  const layers: Layer[] = []
 
   for (let i = 0; i < count; i++) {
     const { w, h } = tentative[i]
-
-    const jitterAmp = (1 - params.coherence) * canvasWidth * 0.15
-    const xJitter = noise1D(noise, i, 0.3) * jitterAmp
-
+    const xJitter = computeAxisJitter(i, params.coherence, noise, maxJitterMm)
     const localRot = noise1D(noise, i + 100, 0.5) * params.localVariation
     const rotation = params.globalTilt + localRot
 
-    const layer: Layer = {
+    layers.push({
       id: `layer-${i}`,
+      shape: 'rectangle',
       x: (canvasWidth - w) / 2 + xJitter,
       y: cursorY,
       width: w,
@@ -134,69 +153,311 @@ export function placeLayers(
       skew: params.skew,
       colorHex: '#000000',
       area: w * h,
-    }
-    layers.push(layer)
+    })
     cursorY += h + gap
   }
 
-  // Keep layers inside the canvas bounds.
-  return clampToCanvas(layers, canvasWidth, canvasHeight)
+  return layers
+}
+
+function placeRockLayers(
+  sizes: number[],
+  params: PosterParams,
+  noise: NoiseFn,
+  canvasWidth: number,
+  canvasHeight: number,
+): Layer[] {
+  const count = sizes.length
+  const baseMax = params.baseSize * canvasHeight
+
+  // Treat each rock as a noisy circle of radius baseMax*weight/2.
+  const radii = sizes.map((w) => Math.min(
+    (baseMax * w) / 2,
+    (canvasWidth * 0.95) / 2,
+    (canvasHeight * 0.6) / 2,
+  ))
+
+  const totalHeight = radii.reduce((a, r) => a + r * 2, 0)
+  const target = canvasHeight * 0.85
+  const stackScale = totalHeight > target ? target / totalHeight : 1
+  const scaled = radii.map((r) => r * stackScale)
+
+  const finalHeight = scaled.reduce((a, r) => a + r * 2, 0)
+  const gapCount = Math.max(1, count - 1)
+  const rawGap = (canvasHeight - finalHeight) / (gapCount + 2)
+  const gap = rawGap - Math.min(scaled[0] * 0.15, 20)
+
+  let cursorY = (canvasHeight - (finalHeight + gap * gapCount)) / 2 + scaled[0]
+  const maxJitterMm = canvasWidth * 0.15
+  const layers: Layer[] = []
+
+  for (let i = 0; i < count; i++) {
+    const r = scaled[i]
+    const xJitter = computeAxisJitter(i, params.coherence, noise, maxJitterMm)
+    const centerX = canvasWidth / 2 + xJitter
+    const centerY = cursorY
+
+    const rock = generateRock(
+      centerX,
+      centerY,
+      r,
+      i,
+      params.rockParams,
+      noise,
+    )
+
+    layers.push({
+      id: `layer-${i}`,
+      shape: 'rock',
+      x: rock.boundingBox.x,
+      y: rock.boundingBox.y,
+      width: rock.boundingBox.width,
+      height: rock.boundingBox.height,
+      rotation: 0,
+      skew: 0,
+      colorHex: '#000000',
+      area: rock.boundingBox.width * rock.boundingBox.height,
+      polygon: rock,
+    })
+
+    const nextR = i + 1 < count ? scaled[i + 1] : r
+    cursorY += r + gap + nextR
+  }
+
+  return layers
+}
+
+function placeCircleLayers(
+  sizes: number[],
+  params: PosterParams,
+  noise: NoiseFn,
+  canvasWidth: number,
+  canvasHeight: number,
+): Layer[] {
+  const count = sizes.length
+  const baseMax = params.baseSize * canvasHeight
+
+  // Diameter from Fibonacci weight; cap to fit within canvas.
+  const diameters = sizes.map((w) =>
+    Math.min(baseMax * w, canvasWidth * 0.95, canvasHeight * 0.6),
+  )
+
+  const totalHeight = diameters.reduce((a, d) => a + d, 0)
+  const targetStackHeight = canvasHeight * 0.85
+  const stackScale = totalHeight > targetStackHeight ? targetStackHeight / totalHeight : 1
+  const scaled = diameters.map((d) => d * stackScale)
+
+  const finalStackHeight = scaled.reduce((a, d) => a + d, 0)
+  const gapCount = Math.max(1, count - 1)
+  const rawGap = (canvasHeight - finalStackHeight) / (gapCount + 2)
+  const gap = rawGap - Math.min(scaled[0] * 0.15, 20)
+
+  let cursorY = (canvasHeight - (finalStackHeight + gap * gapCount)) / 2
+  const maxJitterMm = canvasWidth * 0.15
+  const layers: Layer[] = []
+
+  for (let i = 0; i < count; i++) {
+    const d = scaled[i]
+    const xJitter = computeAxisJitter(i, params.coherence, noise, maxJitterMm)
+
+    layers.push({
+      id: `layer-${i}`,
+      shape: 'circle',
+      x: (canvasWidth - d) / 2 + xJitter,
+      y: cursorY,
+      width: d,
+      height: d,
+      rotation: 0,
+      skew: 0,
+      colorHex: '#000000',
+      area: Math.PI * (d / 2) * (d / 2),
+    })
+    cursorY += d + gap
+  }
+
+  return layers
+}
+
+// Rules A + E — lay out layers along the vertical axis with sine-based jitter.
+export function placeLayers(
+  sizes: number[],
+  proportions: number[],
+  params: PosterParams,
+  _rng: RNG,
+  noise: NoiseFn,
+  canvasWidth: number,
+  canvasHeight: number,
+): Layer[] {
+  if (sizes.length === 0) return []
+
+  let layers: Layer[]
+  if (params.blockShape === 'rock') {
+    layers = placeRockLayers(sizes, params, noise, canvasWidth, canvasHeight)
+  } else if (params.blockShape === 'circle') {
+    layers = placeCircleLayers(sizes, params, noise, canvasWidth, canvasHeight)
+  } else {
+    layers = placeRectangleLayers(sizes, proportions, params, noise, canvasWidth, canvasHeight)
+  }
+
+  const minSized =
+    params.blockShape === 'rectangle'
+      ? enforceMinSideLength(layers, params.baseSize, canvasHeight)
+      : layers
+  return clampToCanvas(minSized, canvasWidth, canvasHeight)
 }
 
 function clampToCanvas(layers: Layer[], canvasWidth: number, canvasHeight: number): Layer[] {
   return layers.map((l) => {
     const x = Math.max(-l.width * 0.1, Math.min(canvasWidth - l.width * 0.9, l.x))
     const y = Math.max(-l.height * 0.1, Math.min(canvasHeight - l.height * 0.9, l.y))
+    if (l.shape === 'rock' && l.polygon) {
+      const dx = x - l.x
+      const dy = y - l.y
+      const p = translateRock(l.polygon, dx, dy)
+      return { ...l, x, y, polygon: p }
+    }
     return { ...l, x, y }
   })
 }
 
-// Rule D — ensure every layer overlaps at least one neighbor.
-export function enforceOverlap(layers: Layer[], targetDensity: number): Layer[] {
+function rotatedAABB(layer: Layer): {
+  top: number
+  bottom: number
+  left: number
+  right: number
+} {
+  const cx = layer.x + layer.width / 2
+  const cy = layer.y + layer.height / 2
+  if (layer.shape === 'circle') {
+    const r = layer.width / 2
+    return { top: cy - r, bottom: cy + r, left: cx - r, right: cx + r }
+  }
+  const theta = (layer.rotation * Math.PI) / 180
+  const cos = Math.abs(Math.cos(theta))
+  const sin = Math.abs(Math.sin(theta))
+  const w2 = (layer.width * cos + layer.height * sin) / 2
+  const h2 = (layer.width * sin + layer.height * cos) / 2
+  return {
+    top: cy - h2,
+    bottom: cy + h2,
+    left: cx - w2,
+    right: cx + w2,
+  }
+}
+
+// Rule D — vertical-chain overlap clamped into a tight BAND.
+// Every adjacent pair has an overlap of at least `min(overlap, layerMinDim * minRatio)`
+// and at most `layerMinDim * maxRatio`, where the ratios flank `overlapDepth`.
+// This replaces the v0.2 floor-only semantic per v0.3 feedback.
+export function enforceVerticalChain(
+  layers: Layer[],
+  overlapDepth: number,
+  _breathingRoom: number, // retained signature arg but ignored (v0.3 removed the concept)
+  _rng: RNG,
+): Layer[] {
   if (layers.length < 2) return layers
-  const result = layers.map((l) => ({ ...l }))
+  const sorted = [...layers]
+    .sort((a, b) => a.y + a.height / 2 - (b.y + b.height / 2))
+    .map((l) => ({ ...l }))
 
-  for (let i = 0; i < result.length; i++) {
-    const a = result[i]
-    let bestIdx = -1
-    let bestDist = Infinity
-    for (let j = 0; j < result.length; j++) {
-      if (i === j) continue
-      const b = result[j]
-      const d = bboxGap(a, b)
-      if (d < bestDist) {
-        bestDist = d
-        bestIdx = j
-      }
-    }
-    if (bestIdx === -1) continue
-    if (bestDist <= 0) continue // already overlapping
+  // Tight band around the target depth. Floor 3%, ceiling 20%.
+  const minRatio = Math.max(0.03, overlapDepth - 0.05)
+  const maxRatio = Math.min(0.2, overlapDepth + 0.05)
 
-    const b = result[bestIdx]
-    const ax = a.x + a.width / 2
-    const ay = a.y + a.height / 2
-    const bx = b.x + b.width / 2
-    const by = b.y + b.height / 2
-    const dx = bx - ax
-    const dy = by - ay
-    const len = Math.hypot(dx, dy) || 1
-    const pullFactor = 0.3 + targetDensity * 0.7
-    const overlapBonus = Math.min(a.width, a.height) * 0.15
-    const shift = (bestDist + overlapBonus) * pullFactor
-    result[i] = {
-      ...a,
-      x: a.x + (dx / len) * shift,
-      y: a.y + (dy / len) * shift,
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1]
+    const curr = sorted[i]
+
+    if (prev.shape === 'rock' && curr.shape === 'rock') {
+      enforceRockPair(prev, curr, minRatio, maxRatio)
+    } else if (prev.shape === 'circle' && curr.shape === 'circle') {
+      enforceCirclePair(prev, curr, minRatio, maxRatio)
+    } else {
+      enforceRectPair(prev, curr, minRatio, maxRatio)
     }
   }
 
-  return result
+  return sorted
 }
 
-// Gap between two axis-aligned bounding boxes. <=0 means overlap.
-function bboxGap(a: Layer, b: Layer): number {
-  const dx = Math.max(b.x - (a.x + a.width), a.x - (b.x + b.width), 0)
-  const dy = Math.max(b.y - (a.y + a.height), a.y - (b.y + b.height), 0)
-  if (dx === 0 && dy === 0) return -1 // definitely overlapping
-  return Math.hypot(dx, dy)
+function enforceRockPair(prev: Layer, curr: Layer, minRatio: number, maxRatio: number): void {
+  if (!prev.polygon || !curr.polygon) return
+  const minDim = Math.min(prev.polygon.boundingBox.height, curr.polygon.boundingBox.height)
+  const minOverlap = minDim * minRatio
+  const maxOverlap = minDim * maxRatio
+  // Use bbox overlap as the pull magnitude; SAT for the yes/no intersection test.
+  const currentOverlap =
+    prev.polygon.boundingBox.y + prev.polygon.boundingBox.height -
+    curr.polygon.boundingBox.y
+  let dy = 0
+  // Step 1: coarse pull based on bbox overlap into band.
+  if (currentOverlap < minOverlap) {
+    dy = -(minOverlap - currentOverlap)
+  } else if (currentOverlap > maxOverlap) {
+    dy = currentOverlap - maxOverlap
+  }
+  if (dy !== 0) {
+    curr.polygon = translateRock(curr.polygon, 0, dy)
+  }
+  // Step 2: if SAT still separates them despite bbox overlap, pull until SAT says
+  // they intersect. Bounded at half the minDim of pull to avoid runaway.
+  if (!polygonsIntersect(prev.polygon.points, curr.polygon.points)) {
+    let extra = 0
+    const stepPx = Math.max(0.5, minDim * 0.05)
+    while (
+      extra < minDim &&
+      !polygonsIntersect(prev.polygon.points, curr.polygon.points)
+    ) {
+      curr.polygon = translateRock(curr.polygon, 0, -stepPx)
+      extra += stepPx
+    }
+  }
+  curr.x = curr.polygon.boundingBox.x
+  curr.y = curr.polygon.boundingBox.y
+  curr.width = curr.polygon.boundingBox.width
+  curr.height = curr.polygon.boundingBox.height
+}
+
+function enforceRectPair(prev: Layer, curr: Layer, minRatio: number, maxRatio: number): void {
+  const prevBox = rotatedAABB(prev)
+  const currBox = rotatedAABB(curr)
+  const minDim = Math.min(prev.height, curr.height)
+  const minOverlap = minDim * minRatio
+  const maxOverlap = minDim * maxRatio
+  // currentOverlap > 0 = overlapping, < 0 = separated gap
+  const currentOverlap = prevBox.bottom - currBox.top
+  if (currentOverlap < minOverlap) {
+    curr.y -= minOverlap - currentOverlap
+  } else if (currentOverlap > maxOverlap) {
+    curr.y += currentOverlap - maxOverlap
+  }
+}
+
+function enforceCirclePair(prev: Layer, curr: Layer, minRatio: number, maxRatio: number): void {
+  const prevCx = prev.x + prev.width / 2
+  const prevCy = prev.y + prev.height / 2
+  const currCx = curr.x + curr.width / 2
+  const currCy = curr.y + curr.height / 2
+  const dx = currCx - prevCx
+  const dy = currCy - prevCy
+  const dist = Math.hypot(dx, dy) || 1
+  const ux = dx / dist
+  const uy = dy / dist
+  const sumRadii = (prev.width + curr.width) / 2
+  const minDiameter = Math.min(prev.width, curr.width)
+  // Overlap depth along connecting line. Positive = overlapping.
+  const currentOverlap = sumRadii - dist
+  const minOverlap = minDiameter * minRatio
+  const maxOverlap = minDiameter * maxRatio
+  if (currentOverlap < minOverlap) {
+    // Pull curr toward prev.
+    const pull = minOverlap - currentOverlap
+    curr.x -= ux * pull
+    curr.y -= uy * pull
+  } else if (currentOverlap > maxOverlap) {
+    // Push curr away from prev.
+    const push = currentOverlap - maxOverlap
+    curr.x += ux * push
+    curr.y += uy * push
+  }
 }

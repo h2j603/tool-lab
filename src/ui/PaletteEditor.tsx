@@ -1,7 +1,6 @@
 import { Copy, Plus, Trash2 } from 'lucide-react'
 import { ColorRole } from '../engine/types'
 import { useStore } from '../state/store'
-import { ColorSwatch } from './primitives/ColorSwatch'
 
 const ROLE_OPTIONS: { value: ColorRole; label: string }[] = [
   { value: 'dominant', label: 'Dominant' },
@@ -63,9 +62,10 @@ export function PaletteEditor() {
           <button
             onClick={() => duplicate(palette.id)}
             title="Duplicate as editable custom palette"
-            className="p-1 rounded hover:bg-neutral-100"
+            aria-label="Duplicate palette"
+            className="p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded hover:bg-neutral-100"
           >
-            <Copy size={13} />
+            <Copy size={15} />
           </button>
           {editable && (
             <button
@@ -73,9 +73,10 @@ export function PaletteEditor() {
                 if (confirm(`Delete palette "${palette.name}"?`)) del(palette.id)
               }}
               title="Delete palette"
-              className="p-1 rounded hover:bg-red-50 text-red-600"
+              aria-label="Delete palette"
+              className="p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded hover:bg-red-50 text-red-600"
             >
-              <Trash2 size={13} />
+              <Trash2 size={15} />
             </button>
           )}
         </div>
@@ -85,26 +86,28 @@ export function PaletteEditor() {
           const canRemove =
             editable && palette.colors.length > 3 && !roleViolation(c.role)
           return (
-            <div key={i} className="flex items-center gap-2">
-              <ColorSwatch hex={c.hex} />
+            <div key={i} className="flex items-center gap-1.5 flex-wrap">
               <input
                 type="color"
                 value={isHex(c.hex) ? c.hex : '#000000'}
                 onChange={(e) => updateColor(palette.id, i, { hex: e.target.value })}
                 disabled={!editable}
-                className="w-6 h-6 border border-neutral-300 rounded cursor-pointer disabled:cursor-not-allowed"
+                aria-label="Color picker"
+                className="w-8 h-8 border border-neutral-300 rounded cursor-pointer disabled:cursor-not-allowed shrink-0"
               />
               <input
                 value={c.hex}
                 onChange={(e) => updateColor(palette.id, i, { hex: e.target.value })}
                 disabled={!editable}
-                className="w-20 border border-neutral-300 rounded px-1 py-0.5 text-[11px] font-mono focus:outline-none focus:border-black disabled:bg-neutral-50"
+                aria-label="Hex value"
+                className="w-[84px] border border-neutral-300 rounded px-1.5 py-1 text-xs font-mono focus:outline-none focus:border-black disabled:bg-neutral-50"
               />
               <select
                 value={c.role}
                 onChange={(e) => updateColor(palette.id, i, { role: e.target.value as ColorRole })}
                 disabled={!editable}
-                className="flex-1 border border-neutral-300 rounded px-1 py-0.5 text-[11px] bg-white focus:outline-none focus:border-black disabled:bg-neutral-50"
+                aria-label="Color role"
+                className="flex-1 min-w-[100px] border border-neutral-300 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-black disabled:bg-neutral-50"
               >
                 {ROLE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -117,9 +120,10 @@ export function PaletteEditor() {
                   onClick={() => removeColor(palette.id, i)}
                   disabled={!canRemove}
                   title={canRemove ? 'Remove color' : 'Cannot remove — role required'}
-                  className="p-1 rounded hover:bg-neutral-100 disabled:opacity-30"
+                  aria-label="Remove color"
+                  className="p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded hover:bg-neutral-100 disabled:opacity-30"
                 >
-                  <Trash2 size={12} />
+                  <Trash2 size={14} />
                 </button>
               )}
             </div>
@@ -129,9 +133,9 @@ export function PaletteEditor() {
       {editable && palette.colors.length < 6 && (
         <button
           onClick={() => addColor(palette.id, 'secondary')}
-          className="flex items-center gap-1 text-[11px] text-neutral-600 hover:text-black"
+          className="flex items-center gap-1 py-1.5 text-xs text-neutral-600 hover:text-black"
         >
-          <Plus size={12} /> Add color
+          <Plus size={14} /> Add color
         </button>
       )}
       {!editable && (

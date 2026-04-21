@@ -14,10 +14,10 @@ export function Slider({ label, value, min, max, step, onChange, format }: Slide
   const handle = (e: ChangeEvent<HTMLInputElement>) => onChange(Number(e.target.value))
   const display = format ? format(value) : String(value)
   return (
-    <label className="block text-xs">
+    <label className="block text-xs select-none">
       <div className="flex justify-between items-baseline mb-1">
         <span className="text-neutral-600">{label}</span>
-        <span className="font-mono text-neutral-900">{display}</span>
+        <span className="font-mono text-neutral-900 tabular-nums">{display}</span>
       </div>
       <input
         type="range"
@@ -26,7 +26,7 @@ export function Slider({ label, value, min, max, step, onChange, format }: Slide
         step={step}
         value={value}
         onChange={handle}
-        className="w-full accent-black"
+        className="w-full accent-black h-6 cursor-pointer"
       />
     </label>
   )
